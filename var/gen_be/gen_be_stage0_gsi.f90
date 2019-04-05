@@ -205,22 +205,22 @@ program gen_be_stage0_gsi
    allocate( znu(1:dim3) )
 
    var = "XLAT"
-   call da_get_field( input_file, var, 2, dim1, dim2, 1, 1, xlat )
+   call da_get_field( input_file, var, 2, 1, dim1, 1, dim2, 1, xlat )
    var = "XLONG"
-   call da_get_field( input_file, var, 2, dim1, dim2, 1, 1, xlon )
+   call da_get_field( input_file, var, 2, 1, dim1, 1, dim2, 1, xlon )
    var = "MAPFAC_M"
-   call da_get_field( input_file, var, 2, dim1, dim2, 1, 1, mapfac_m )
+   call da_get_field( input_file, var, 2, 1, dim1, 1, dim2, 1, mapfac_m )
    var = "MAPFAC_MX"
-   call da_get_field( input_file, var, 2, dim1, dim2, 1, 1, mapfac_mx )
+   call da_get_field( input_file, var, 2, 1, dim1, 1, dim2, 1, mapfac_mx )
    var = "MAPFAC_MY"
-   call da_get_field( input_file, var, 2, dim1, dim2, 1, 1, mapfac_my )
+   call da_get_field( input_file, var, 2, 1, dim1, 1, dim2, 1, mapfac_my )
    var = "MAPFAC_U"
-   call da_get_field( input_file, var, 2, dim1+1, dim2, 1, 1, mapfac_u )
+   call da_get_field( input_file, var, 2, 1, dim1+1, 1, dim2, 1, mapfac_u )
    var = "MAPFAC_V"
-   call da_get_field( input_file, var, 2, dim1, dim2+1, 1, 1, mapfac_v )
+   call da_get_field( input_file, var, 2, 1, dim1, 1, dim2+1, 1, mapfac_v )
    var = "ZNU"
    allocate( tmp2d(1:dim3,1:1) )
-   call da_get_field( input_file, var, 1, dim3, 1, 1, 1, tmp2d )
+   call da_get_field( input_file, var, 1, 1, dim3, 1, 1, 1, tmp2d )
    znu(:)=tmp2d(:,1)
    deallocate( tmp2d )
 
@@ -264,9 +264,9 @@ program gen_be_stage0_gsi
 
          ! Read u, v:
          var = "U"
-         call da_get_field( input_file, var, 3, dim1s, dim2, dim3, k, u )
+         call da_get_field( input_file, var, 3, 1, dim1s, 1, dim2, k, u )
          var = "V"
-         call da_get_field( input_file, var, 3, dim1, dim2s, dim3, k, v )
+         call da_get_field( input_file, var, 3, 1, dim1, 1, dim2s, k, v )
 
          ! Calculate vorticity (in center of mass grid on WRF's Arakawa C-grid):
          call da_uv_to_vor_c( dim1, dim2, ds, &
@@ -308,7 +308,7 @@ program gen_be_stage0_gsi
          chi(:,:,k) = chi2d(:,:)
 !        Read mass fields, and convert to T and rh:
 
-         call da_get_trh( input_file, dim1, dim2, dim3, k, temp2d, rh2d )
+         call da_get_trh( input_file, 1, dim1, 1, dim2, k, temp2d, rh2d )
          temp(:,:,k) = temp2d(:,:)
          rh(:,:,k) = 0.01 * rh2d(:,:) ! *0.01 to conform with WRF-Var units.
 
@@ -316,7 +316,7 @@ program gen_be_stage0_gsi
              do jj = 1,num_aeros
                 !write(unit=stdout,fmt='(a)') trim(aeros_to_process(jj))
                 var = trim( adjustl(aeros_to_process(jj) ) )
-                call da_get_field( input_file, var, 3, dim1, dim2, dim3, k, aero2d)
+                call da_get_field( input_file, var, 3, 1, dim1, 1, dim2, k, aero2d)
                 aero(jj,:,:,k) = aero2d
                 if ( var.eq.'SULF' .or. var.eq.'sulf') then
                    !write(unit=stdout,fmt='(a)') 'converting SULF from ppmv to micro-gram/kg'
@@ -329,7 +329,7 @@ program gen_be_stage0_gsi
 
 !     Finally, extract surface pressure:
       var = "PSFC"
-      call da_get_field( input_file, var, 2, dim1, dim2, dim3, 1, psfc )
+      call da_get_field( input_file, var, 2, 1, dim1, 1, dim2, 1, psfc )
 ! convert psfc in centibar     
       psfc = psfc*0.001
 

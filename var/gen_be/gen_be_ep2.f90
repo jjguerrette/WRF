@@ -10,96 +10,91 @@ program gen_be_ep2
 !                                             ensemble variance file output from
 !                                             gen_be_ensmean.f90
 !
+!  JJ Guerrette (NCAR/MMM)     March 2019     Refactored for generalization across 
+!                                             different variables, enabled (again?) 
+!                                             usage of ensemble mean/variance files
+!                                             output from gen_be_ensmean.f90, added
+!                                             MPI distribution of grid
 !----------------------------------------------------------------------
 
 #ifdef crayx1
 #define iargc ipxfargc
 #endif
 
-   use da_control, only : stderr, stdout, filename_len
-   use da_tools_serial, only : da_get_unit, da_free_unit
-   use da_gen_be, only : da_stage0_initialize, da_get_field, da_get_trh
+   use da_control, only : stderr, stdout, filename_len, root
+   use da_gen_be, only : da_stage0_initialize
+!#ifdef DM_PARALLEL
+!   use module_dm, only : MPASPECT
+!#endif
 
    implicit none
 
+#ifdef DM_PARALLEL
+   include 'mpif.h'
+#endif
+   type field_type
+      real, allocatable :: data(:,:,:)
+   end type field_type
+
    character (len=filename_len)   :: directory        ! General filename stub.
-   character (len=filename_len)   :: filename         ! General filename stub.
+   character (len=filename_len)   :: filestub         ! General filename stub.
+   character (len=filename_len)   :: filebase   ! General filename base.
    character (len=filename_len)   :: input_file       ! Input file.
-   character (len=filename_len)   :: output_file      ! Output file.
    character (len=10)    :: date                      ! Character date.
-   character (len=10)    :: var                       ! Variable to search for.
+   character (len=10)    :: varname                   ! Variable to search for.
+   character (len=10), allocatable  :: varnames(:)               ! Variables to work on
+
    character (len=3)     :: cne                       ! Ensemble size.
-   character (len=3)     :: ce                        ! Member index -> character.
-   character (len=filename_len)   :: moist_string
+   character (len=3)     :: pe                    ! Member/processor indices -> character.
 
    integer, external     :: iargc
    integer               :: numarg
-   integer               :: ne                        ! Ensemble size.
-   integer               :: i, j, k, member           ! Loop counters.
-   integer               :: dim1                      ! Dimensions of grid (T points).
-   integer               :: dim1s                     ! Dimensions of grid (vor/psi pts).
-   integer               :: dim2                      ! Dimensions of grid (T points).
-   integer               :: dim2s                     ! Dimensions of grid (vor/psi pts).
-   integer               :: dim3                      ! Dimensions of grid (T points).
+   integer               :: ne                        ! Ensemble size
+   integer               :: ivar                      ! Loop counter.
+   integer               :: ni, nj, nk                ! Global dimensions of grid (T points).
+   integer               :: ips, ipe, jps, jpe        ! Local patch dimensions
    integer               :: mp_physics                ! microphysics option
-   real                  :: member_inv                ! 1 / member.
    real                  :: ds                        ! Grid resolution.
    logical               :: remove_mean               ! Remove mean from standard fields.
-   logical               :: has_cloud, has_rain, has_ice, has_snow, has_graup
 
-   real, allocatable     :: u(:,:,:)                  ! u-wind.
-   real, allocatable     :: v(:,:,:)                  ! v-wind.
-   real, allocatable     :: temp(:,:,:)               ! Temperature.
-   real, allocatable     :: q(:,:,:)                  ! Specific humidity.
-   real, allocatable     :: qcloud(:,:,:)             ! Cloud.
-   real, allocatable     :: qrain(:,:,:)              ! Rain.
-   real, allocatable     :: qice(:,:,:)               ! ice
-   real, allocatable     :: qsnow(:,:,:)              ! snow
-   real, allocatable     :: qgraup(:,:,:)             ! graupel
-   real, allocatable     :: psfc(:,:)                 ! Surface pressure.
-   real, allocatable     :: u_mean(:,:,:)             ! u-wind.
-   real, allocatable     :: v_mean(:,:,:)             ! v-wind.
-   real, allocatable     :: temp_mean(:,:,:)          ! Temperature.
-   real, allocatable     :: q_mean(:,:,:)             ! Specific humidity.
-   real, allocatable     :: qcloud_mean(:,:,:)        ! Cloud.
-   real, allocatable     :: qrain_mean(:,:,:)         ! Rain.
-   real, allocatable     :: qice_mean(:,:,:)          ! ice
-   real, allocatable     :: qsnow_mean(:,:,:)         ! snow
-   real, allocatable     :: qgraup_mean(:,:,:)        ! graupel
-   real, allocatable     :: psfc_mean(:,:)            ! Surface pressure.
-   real, allocatable     :: u_mnsq(:,:,:)             ! u-wind.
-   real, allocatable     :: v_mnsq(:,:,:)             ! v-wind.
-   real, allocatable     :: temp_mnsq(:,:,:)          ! Temperature.
-   real, allocatable     :: q_mnsq(:,:,:)             ! Specific humidity.
-   real, allocatable     :: qcloud_mnsq(:,:,:)        ! Cloud.
-   real, allocatable     :: qrain_mnsq(:,:,:)         ! Rain.
-   real, allocatable     :: qice_mnsq(:,:,:)          ! ice
-   real, allocatable     :: qsnow_mnsq(:,:,:)         ! snow
-   real, allocatable     :: qgraup_mnsq(:,:,:)        ! graupel
-   real, allocatable     :: psfc_mnsq(:,:)            ! Surface pressure.
+   integer               :: nvars
+   character (len=10), allocatable :: select_vars(:)
+   integer, allocatable            :: var_nk(:)
 
-   real, allocatable     :: utmp(:,:)                 ! u-wind.
-   real, allocatable     :: vtmp(:,:)                 ! v-wind.
-   real, allocatable     :: ttmp(:,:)                 ! temperature.
-   real, allocatable     :: dummy(:,:)                ! dummy.
+   integer :: cdfid            ! NETCDF file id.
+   integer :: rcode            ! Return code (0=ok).
 
-   integer :: gen_be_iunit, gen_be_ounit
+   integer              :: num_procs, myproc, ierr, ntasks_x, ntasks_y
+   logical              :: log_proc
+   integer, allocatable :: nip(:), njp(:), &
+                           ips_a(:), ipe_a(:), &
+                           jps_a(:), jpe_a(:)
 
    stderr = 0
    stdout = 6
 
-!---------------------------------------------------------------------------------------------
-   write(6,'(/a)')' [1] Initialize information.'
-!---------------------------------------------------------------------------------------------
+#ifdef DM_PARALLEL
+   call mpi_init(ierr)
+   call mpi_comm_size(mpi_comm_world,num_procs,ierr)
+   call mpi_comm_rank(mpi_comm_world,myproc,ierr)
+#else
+   num_procs = 1
+   myproc = 0
+#endif
+   write(pe,'(i3.3)')myproc
 
-   call da_get_unit(gen_be_iunit)
-   call da_get_unit(gen_be_ounit)
+   log_proc = ( myproc == root )
+   if (log_proc) write(stdout,'(A,I0)') 'num_procs = ', num_procs
+
+!---------------------------------------------------------------------------------------------
+   if (log_proc) write(stdout,'(/a)')' [A] Initialize information.'
+!---------------------------------------------------------------------------------------------
 
    remove_mean = .true.
 
    numarg = iargc()
    if ( numarg /= 4 )then
-      write(UNIT=6,FMT='(a)') &
+      if (log_proc) write(stdout,'(a)') &
         "Usage: gen_be_ep2 date ne <directory> <filename> Stop"
       stop
    end if
@@ -108,510 +103,170 @@ program gen_be_ep2
    date=""
    cne=""
    directory=""
-   filename=""
+   filestub=""
 
    call getarg( 1, date )
    call getarg( 2, cne )
    read(cne,'(i3)')ne
    call getarg( 3, directory )
-   call getarg( 4, filename )
+   call getarg( 4, filestub )
 
    if ( remove_mean ) then
-      write(6,'(a,a)')' Computing gen_be ensemble perturbation files for date ', date
+      if (log_proc) write(stdout,'(a,a)') &
+      ' Computing gen_be ensemble perturbation files for date ', date
    else
-      write(6,'(a,a)')' Computing gen_be ensemble forecast files for date ', date
+      if (log_proc) write(stdout,'(a,a)') &
+      ' Computing gen_be ensemble forecast files for date ', date
    end if
-   write(6,'(a)')' Perturbations are in MODEL SPACE (u, v, t, q, ps)'
-   write(6,'(a,i4)')' Ensemble Size = ', ne
-   write(6,'(a,a)')' Directory = ', trim(directory)
-   write(6,'(a,a)')' Filename = ', trim(filename)
+   if (log_proc) write(stdout,'(a)') &
+      ' Perturbations are in MODEL SPACE (u, v, t, q, ps)'
+   if (log_proc) write(stdout,'(a,i4)') &
+      ' Ensemble Size = ', ne
+   if (log_proc) write(stdout,'(a,a)') &
+      ' Directory = ', trim(directory)
+   if (log_proc) write(stdout,'(a,a)') &
+      ' Filename = ', trim(filestub)
 
 !---------------------------------------------------------------------------------------------
-   write(6,'(/a)')' [2] Set up data dimensions and allocate arrays:' 
+   if (log_proc) write(stdout,'(/a)') &
+      ' [B] Set up data dimensions and allocate data arrays:' 
 !---------------------------------------------------------------------------------------------
 
-!  Get grid dimensions from first T field:
-   var = "T"
-   input_file = trim(directory)//'/'//trim(filename)//'.e001'
-   call da_stage0_initialize( input_file, var, dim1, dim2, dim3, ds, mp_physics )
-   dim1s = dim1+1 ! u i dimension is 1 larger.
-   dim2s = dim2+1 ! v j dimension is 1 larger.
+   ! select_vars could come from namelist or external caller. Hard-wired for now.
+   nvars = 10
+   allocate(select_vars(nvars))
+   select_vars(1:nvars) = &
+      [ character(len=10) :: "U", "V", "T", "QVAPOR", "PSFC", & 
+                   "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP" ]
 
-!  Allocate arrays in output fields:
-   allocate( u(1:dim1,1:dim2,1:dim3) ) ! Note - interpolated to mass pts for output.
-   allocate( v(1:dim1,1:dim2,1:dim3) ) ! Note - interpolated to mass pts for output.
-   allocate( temp(1:dim1,1:dim2,1:dim3) )
-   allocate( q(1:dim1,1:dim2,1:dim3) )
-   allocate( psfc(1:dim1,1:dim2) )
-   allocate( u_mean(1:dim1,1:dim2,1:dim3) ) ! Note - interpolated to chi pts for output.
-   allocate( v_mean(1:dim1,1:dim2,1:dim3) )
-   allocate( temp_mean(1:dim1,1:dim2,1:dim3) )
-   allocate( q_mean(1:dim1,1:dim2,1:dim3) )
-   allocate( psfc_mean(1:dim1,1:dim2) )
-   allocate( u_mnsq(1:dim1,1:dim2,1:dim3) ) ! Note - interpolated to chi pts for output.
-   allocate( v_mnsq(1:dim1,1:dim2,1:dim3) )
-   allocate( temp_mnsq(1:dim1,1:dim2,1:dim3) )
-   allocate( q_mnsq(1:dim1,1:dim2,1:dim3) )
-   allocate( psfc_mnsq(1:dim1,1:dim2) )
-   ! cloud variables
-   has_cloud = .false.
-   has_rain  = .false.
-   has_ice   = .false.
-   has_snow  = .false.
-   has_graup = .false.
-   moist_string = ''
-   if ( mp_physics > 0 ) then
-      has_cloud = .true.
-      has_rain  = .true.
-      allocate( qcloud(1:dim1,1:dim2,1:dim3) )
-      allocate( qrain(1:dim1,1:dim2,1:dim3) )
-      allocate( qcloud_mean(1:dim1,1:dim2,1:dim3) )
-      allocate( qrain_mean(1:dim1,1:dim2,1:dim3) )
-      allocate( qcloud_mnsq(1:dim1,1:dim2,1:dim3) )
-      allocate( qrain_mnsq(1:dim1,1:dim2,1:dim3) )
-      qcloud_mean = 0.0
-      qrain_mean = 0.0
-      qcloud_mnsq = 0.0
-      qrain_mnsq = 0.0
-      moist_string = trim(moist_string)//'qcloud, qrain '
-      if ( mp_physics == 2 .or. mp_physics == 4 .or. &
-           mp_physics >= 6 ) then
-         has_ice   = .true.
-         allocate( qice(1:dim1,1:dim2,1:dim3) )
-         allocate( qice_mean(1:dim1,1:dim2,1:dim3) )
-         allocate( qice_mnsq(1:dim1,1:dim2,1:dim3) )
-         qice_mean = 0.0
-         qice_mnsq = 0.0
-         moist_string = trim(moist_string)//', qice '
-      end if
-      if ( mp_physics == 2 .or. mp_physics >= 4 ) then
-         has_snow  = .true.
-         allocate( qsnow(1:dim1,1:dim2,1:dim3) )
-         allocate( qsnow_mean(1:dim1,1:dim2,1:dim3) )
-         allocate( qsnow_mnsq(1:dim1,1:dim2,1:dim3) )
-         qsnow_mean = 0.0
-         qsnow_mnsq = 0.0
-         moist_string = trim(moist_string)//', qsnow '
-      end if
-      if ( mp_physics == 2 .or. mp_physics >= 6 ) then
-         if ( mp_physics /= 11 .and. mp_physics /= 13 .and. &
-              mp_physics /= 14 ) then
-            has_graup = .true.
-            allocate( qgraup(1:dim1,1:dim2,1:dim3) )
-            allocate( qgraup_mean(1:dim1,1:dim2,1:dim3) )
-            allocate( qgraup_mnsq(1:dim1,1:dim2,1:dim3) )
-            qgraup_mean = 0.0
-            qgraup_mnsq = 0.0
-            moist_string = trim(moist_string)//', qgraup '
-         end if
-      end if
-      write(6,'(a)')' cloud variables are '//trim(moist_string)
-   end if
+   ! Get domain grid dimensions from first T field:
+   varname = "T"
+   filebase = trim(directory)//'/'//trim(filestub)
+   input_file = trim(filebase)//'.e001'
+   call da_stage0_initialize( input_file, varname, ni, nj, nk, ds, mp_physics )
 
-   u_mean = 0.0
-   v_mean = 0.0
-   temp_mean = 0.0
-   q_mean = 0.0
-   psfc_mean = 0.0
-   u_mnsq = 0.0
-   v_mnsq = 0.0
-   temp_mnsq = 0.0
-   q_mnsq = 0.0
-   psfc_mnsq = 0.0
+   allocate(var_nk(nvars))
+   var_nk = (/nk, nk, nk, nk, 1, &
+              nk, nk, nk, nk, nk/)
 
-!  Temporary arrays:
-   allocate( utmp(1:dim1s,1:dim2) ) ! u on Arakawa C-grid.
-   allocate( vtmp(1:dim1,1:dim2s) ) ! v on Arakawa C-grid.
-   allocate( ttmp(1:dim1,1:dim2) )
-   allocate( dummy(1:dim1,1:dim2) )
+   ! Assign local patch grid dimensions using num_procs, ni, nj
+   ! Note: the patch and domain limits could alternatively come from WRF framework
+   !       in an on-line WRFDA calc. for perturbations, would not need to write 
+   !       pert files
+#ifdef DM_PARALLEL
+   allocate( nip(num_procs)  , njp(num_procs)   )
+   allocate( ips_a(num_procs), ipe_a(num_procs) )
+   allocate( jps_a(num_procs), jpe_a(num_procs) )
+
+   call MPASPECT   ( num_procs, ntasks_x, ntasks_y, 1, 1)
+   call split_grid ( num_procs, ntasks_x, ntasks_y, ni, nj, nip, njp, ips_a, jps_a)
+   ipe_a = ips_a + nip - 1
+   jpe_a = jps_a + njp - 1
+
+   if (log_proc) write(stdout,'(A,3(I8))') ' ni, nj, nk ', ni, nj, nk
+   if (log_proc) write(stdout,'(A,*(I8))') ' ips_a = ', ips_a
+   if (log_proc) write(stdout,'(A,*(I8))') ' ipe_a = ', ipe_a
+   if (log_proc) write(stdout,'(A,*(I8))') ' jps_a = ', jps_a
+   if (log_proc) write(stdout,'(A,*(I8))') ' jpe_a = ', jpe_a
+
+   ips = ips_a(myproc+1)
+   ipe = ipe_a(myproc+1)
+   jps = jps_a(myproc+1)
+   jpe = jpe_a(myproc+1)
+   deallocate(nip, njp)
+   deallocate(ips_a, ipe_a)
+   deallocate(jps_a, jpe_a)
+#else
+   ips = 1
+   ipe = ni
+   jps = 1
+   jpe = nj
+#endif
 
 !---------------------------------------------------------------------------------------------
-   write(6,'(/a)')' [3] Extract necessary fields from input NETCDF files and output.'
+   if (log_proc) write(stdout,'(/a)') &
+      ' [C] Loop over variables:' 
 !---------------------------------------------------------------------------------------------
 
-   do member = 1, ne
+   call gen_be_ep( filebase, select_vars, nvars, remove_mean, .true., &
+                   ni, nj, var_nk, ne, ips, ipe, jps, jpe, &
+                   num_procs, myproc )
 
-      write(UNIT=ce,FMT='(i3.3)')member
-      input_file = trim(directory)//'/'//trim(filename)//'.e'//trim(ce)
+!   allocate(varnames(1))
+!   do ivar = 1, nvars
+!      varnames(1) = trim(select_vars(ivar))
+!
+!Alternatively loops over variables for writing
+!      call gen_be_ep( filebase, varnames, 1, remove_mean, .true., &
+!                      ni, nj, var_nk(ivar:ivar), ne, ips, ipe, jps, jpe, &
+!                      num_procs, myproc )
+!
+!OR read them directly into WRFDA (da_setup_flow_predictors.inc)
+!
+!      !Note: need to update filebase if time stamp changes (4DEnVar)
+!
+!      allocate(dummy(ips:ipe, jps:jpe, 1:var_nk(ivar), ne)
+!      call gen_be_ep( filebase, varnames, 1, .true., .false., &
+!                      ni, nj, var_nk(ivar:ivar), ne, ips, ipe, jps, jpe, &
+!                      num_procs, myproc, model_field = dummy(:,:,:,1:ne)  )
+!
+!      do iens = 1, ne
+!         if (varnames(1) == "U") then
+!            ep % v1(ips:ipe,jps:jpe,1:nk,ie) = dummy(:,:,:,ie)
+!         end if
+!         if (varnames(1) == "V") then
+!            ep % v2(ips:ipe,jps:jpe,1:nk,ie) = dummy(:,:,:,ie)
+!         end if
+!         if (varnames(1) == "T") then
+!            ep % v3(ips:ipe,jps:jpe,1:nk,ie) = dummy(:,:,:,ie)
+!         end if
+!         if (varnames(1) == "QVAPOR") then
+!            ep % v4(ips:ipe,jps:jpe,1:nk,ie) = dummy(:,:,:,ie)
+!         end if
+!         if (varnames(1) == "PSFC") then
+!            ep % v5(ips:ipe,jps:jpe,   1,ie) = dummy(:,:,1,ie)
+!         end if
+!
+!         !  Optional include hydrometeors: 
+!         !  (could adjust varnames based on these options instead of if statement)
+!         if ( alphacv_method == alphacv_method_xa .and. alpha_hydrometeors ) then  ! xa space
+!            if (varnames(1) == "QCLOUD") then
+!               ep % cl(ips:ipe,jps:jpe,1:nk,ie) = dummy(:,:,:,ie)
+!            end if
+!            if (varnames(1) == "QRAIN") then
+!               ep % rn(ips:ipe,jps:jpe,1:nk,ie) = dummy(:,:,:,ie)
+!            end if
+!            if (varnames(1) == "QICE") then
+!               ep % ci(ips:ipe,jps:jpe,1:nk,ie) = dummy(:,:,:,ie)
+!            end if
+!            if (varnames(1) == "QSNOW") then
+!               ep % sn(ips:ipe,jps:jpe,1:nk,ie) = dummy(:,:,:,ie)
+!            end if
+!            if (varnames(1) == "QGRAUP") then
+!               ep % gr(ips:ipe,jps:jpe,1:nk,ie) = dummy(:,:,:,ie)
+!            end if
+!         end if
+!      end do
+!
+!      deallocate(dummy)
+!
+!   end do
+!   deallocate(varnames)
 
-      do k = 1, dim3
 
-         ! Read u, v:
-         var = "U"
-         call da_get_field( input_file, var, 3, dim1s, dim2, dim3, k, utmp )
-         var = "V"
-         call da_get_field( input_file, var, 3, dim1, dim2s, dim3, k, vtmp )
+   deallocate ( select_vars )
+   deallocate ( var_nk )
 
-!        Interpolate u to mass pts:
-         do j = 1, dim2
-            do i = 1, dim1
-               u(i,j,k) = 0.5 * ( utmp(i,j) + utmp(i+1,j) )
-               v(i,j,k) = 0.5 * ( vtmp(i,j) + vtmp(i,j+1) )
-            end do
-         end do
 
-!        Read theta, and convert to temperature:
-         call da_get_trh( input_file, dim1, dim2, dim3, k, ttmp, dummy )
-         temp(:,:,k) = ttmp(:,:)
+#ifdef DM_PARALLEL
+   call mpi_finalize(ierr)
+#endif
 
-!        Read mixing ratio, and convert to specific humidity:
-         var = "QVAPOR"
-         call da_get_field( input_file, var, 3, dim1, dim2, dim3, k, dummy )
-         q(:,:,k) = dummy(:,:) / ( 1.0 + dummy(:,:) )
-
-!        Read hydrometeors
-         if ( has_cloud ) then
-            var = "QCLOUD"
-            call da_get_field( input_file, var, 3, dim1, dim2, dim3, k, dummy )
-            qcloud(:,:,k) = dummy(:,:)
-         end if
-         if ( has_rain ) then
-            var = "QRAIN"
-            call da_get_field( input_file, var, 3, dim1, dim2, dim3, k, dummy )
-            qrain(:,:,k) = dummy(:,:)
-         end if
-         if ( has_ice ) then
-            var = "QICE"
-            call da_get_field( input_file, var, 3, dim1, dim2, dim3, k, dummy )
-            qice(:,:,k) = dummy(:,:)
-         end if
-         if ( has_snow ) then
-            var = "QSNOW"
-            call da_get_field( input_file, var, 3, dim1, dim2, dim3, k, dummy )
-            qsnow(:,:,k) = dummy(:,:)
-         end if
-         if ( has_graup ) then
-            var = "QGRAUP"
-            call da_get_field( input_file, var, 3, dim1, dim2, dim3, k, dummy )
-            qgraup(:,:,k) = dummy(:,:)
-         end if
-
-      end do
-
-!     Finally, extract surface pressure:
-      var = "PSFC"
-      call da_get_field( input_file, var, 2, dim1, dim2, dim3, 1, psfc )
-
-!     Write out ensemble forecasts for this member:
-      output_file = 'tmp.e'//ce  
-      open (gen_be_ounit, file = output_file, form='unformatted')
-      write(gen_be_ounit)date, dim1, dim2, dim3
-      write(gen_be_ounit)u
-      write(gen_be_ounit)v
-      write(gen_be_ounit)temp
-      write(gen_be_ounit)q
-      if ( has_cloud ) write(gen_be_ounit)qcloud
-      if ( has_rain )  write(gen_be_ounit)qrain
-      if ( has_ice )   write(gen_be_ounit)qice
-      if ( has_snow )  write(gen_be_ounit)qsnow
-      if ( has_graup ) write(gen_be_ounit)qgraup
-      write(gen_be_ounit)psfc
-      close(gen_be_ounit)
-
-!     Calculate accumulating mean and mean square:
-      member_inv = 1.0 / real(member)
-      u_mean = ( real( member-1 ) * u_mean + u ) * member_inv
-      v_mean = ( real( member-1 ) * v_mean + v ) * member_inv
-      temp_mean = ( real( member-1 ) * temp_mean + temp ) * member_inv
-      q_mean = ( real( member-1 ) * q_mean + q ) * member_inv
-      psfc_mean = ( real( member-1 ) * psfc_mean + psfc ) * member_inv
-      u_mnsq = ( real( member-1 ) * u_mnsq + u * u ) * member_inv
-      v_mnsq = ( real( member-1 ) * v_mnsq + v * v ) * member_inv
-      temp_mnsq = ( real( member-1 ) * temp_mnsq + temp * temp ) * member_inv
-      q_mnsq = ( real( member-1 ) * q_mnsq + q * q ) * member_inv
-      psfc_mnsq = ( real( member-1 ) * psfc_mnsq + psfc * psfc ) * member_inv
-      if ( has_cloud ) then
-         qcloud_mean = ( real( member-1 ) * qcloud_mean + qcloud ) * member_inv
-         qcloud_mnsq = ( real( member-1 ) * qcloud_mnsq + qcloud * qcloud ) * member_inv
-      end if
-      if ( has_rain ) then
-         qrain_mean = ( real( member-1 ) * qrain_mean + qrain ) * member_inv
-         qrain_mnsq = ( real( member-1 ) * qrain_mnsq + qrain * qrain ) * member_inv
-      end if
-      if ( has_ice ) then
-         qice_mean = ( real( member-1 ) * qice_mean + qice ) * member_inv
-         qice_mnsq = ( real( member-1 ) * qice_mnsq + qice * qice ) * member_inv
-      end if
-      if ( has_snow ) then
-         qsnow_mean = ( real( member-1 ) * qsnow_mean + qsnow ) * member_inv
-         qsnow_mnsq = ( real( member-1 ) * qsnow_mnsq + qsnow * qsnow ) * member_inv
-      end if
-      if ( has_graup ) then
-         qgraup_mean = ( real( member-1 ) * qgraup_mean + qgraup ) * member_inv
-         qgraup_mnsq = ( real( member-1 ) * qgraup_mnsq + qgraup * qgraup ) * member_inv
-      end if
-
-   end do
-
-   deallocate( utmp )
-   deallocate( vtmp )
-   deallocate( ttmp )
-   deallocate( dummy )
-
-!---------------------------------------------------------------------------------------------
-   write(6,'(/a)')' [4] Compute perturbations and output' 
-!---------------------------------------------------------------------------------------------
-
-   if ( remove_mean ) then
-      write(6,'(a)') "    Calculate ensemble perturbations"
-   else
-      write(6,'(a)') "    WARNING: Not removing ensemble mean (outputs are full-fields)"
-   end if
-
-   do member = 1, ne
-      write(UNIT=ce,FMT='(i3.3)')member
-
-!     Re-read ensemble member standard fields:
-      input_file = 'tmp.e'//ce  
-      open (gen_be_iunit, file = input_file, form='unformatted')
-      read(gen_be_iunit)date, dim1, dim2, dim3
-      read(gen_be_iunit)u
-      read(gen_be_iunit)v
-      read(gen_be_iunit)temp
-      read(gen_be_iunit)q
-      if ( has_cloud ) read(gen_be_iunit)qcloud
-      if ( has_rain )  read(gen_be_iunit)qrain
-      if ( has_ice )   read(gen_be_iunit)qice
-      if ( has_snow )  read(gen_be_iunit)qsnow
-      if ( has_graup ) read(gen_be_iunit)qgraup
-      read(gen_be_iunit)psfc
-      close(gen_be_iunit)
-
-      if ( remove_mean ) then
-         u = u - u_mean
-         v = v - v_mean
-         temp = temp - temp_mean
-         q = q - q_mean
-         if ( has_cloud ) qcloud = qcloud - qcloud_mean
-         if ( has_rain )  qrain  = qrain  - qrain_mean
-         if ( has_ice )   qice   = qice   - qice_mean
-         if ( has_snow )  qsnow  = qsnow  - qsnow_mean
-         if ( has_graup ) qgraup = qgraup - qgraup_mean
-         psfc = psfc - psfc_mean
-      end if
-
-!     Write out perturbations for this member:
-
-      output_file = 'u.e'//trim(ce) ! Output u.
-      open (gen_be_ounit, file = output_file, form='unformatted')
-      write(gen_be_ounit)dim1, dim2, dim3
-      write(gen_be_ounit)u
-      close(gen_be_ounit)
-
-      output_file = 'v.e'//trim(ce) ! Output v.
-      open (gen_be_ounit, file = output_file, form='unformatted')
-      write(gen_be_ounit)dim1, dim2, dim3
-      write(gen_be_ounit)v
-      close(gen_be_ounit)
-
-      output_file = 't.e'//trim(ce) ! Output t.
-      open (gen_be_ounit, file = output_file, form='unformatted')
-      write(gen_be_ounit)dim1, dim2, dim3
-      write(gen_be_ounit)temp
-      close(gen_be_ounit)
-
-      output_file = 'q.e'//trim(ce) ! Output q.
-      open (gen_be_ounit, file = output_file, form='unformatted')
-      write(gen_be_ounit)dim1, dim2, dim3
-      write(gen_be_ounit)q
-      close(gen_be_ounit)
-
-      output_file = 'ps.e'//trim(ce) ! Output ps.
-      open (gen_be_ounit, file = output_file, form='unformatted')
-      write(gen_be_ounit)dim1, dim2, dim3
-      write(gen_be_ounit)psfc
-      close(gen_be_ounit)
-
-      if ( has_cloud ) then
-         output_file = 'qcloud.e'//trim(ce) ! Output qcloud.
-         open (gen_be_ounit, file = output_file, form='unformatted')
-         write(gen_be_ounit)dim1, dim2, dim3
-         write(gen_be_ounit)qcloud
-         close(gen_be_ounit)
-      end if
-
-      if ( has_rain ) then
-         output_file = 'qrain.e'//trim(ce) ! Output qrain.
-         open (gen_be_ounit, file = output_file, form='unformatted')
-         write(gen_be_ounit)dim1, dim2, dim3
-         write(gen_be_ounit)qrain
-         close(gen_be_ounit)
-      end if
-
-      if ( has_ice ) then
-         output_file = 'qice.e'//trim(ce) ! Output qice.
-         open (gen_be_ounit, file = output_file, form='unformatted')
-         write(gen_be_ounit)dim1, dim2, dim3
-         write(gen_be_ounit)qice
-         close(gen_be_ounit)
-      end if
-
-      if ( has_snow ) then
-         output_file = 'qsnow.e'//trim(ce) ! Output qsnow.
-         open (gen_be_ounit, file = output_file, form='unformatted')
-         write(gen_be_ounit)dim1, dim2, dim3
-         write(gen_be_ounit)qsnow
-         close(gen_be_ounit)
-      end if
-
-      if ( has_graup ) then
-         output_file = 'qgraup.e'//trim(ce) ! Output qgraup.
-         open (gen_be_ounit, file = output_file, form='unformatted')
-         write(gen_be_ounit)dim1, dim2, dim3
-         write(gen_be_ounit)qgraup
-         close(gen_be_ounit)
-      end if
-
-   end do
-
-!  Write out mean/stdv fields (stdv stored in mnsq arrays):
-   u_mnsq = sqrt( u_mnsq - u_mean * u_mean )
-   v_mnsq = sqrt( v_mnsq - v_mean * v_mean )
-   temp_mnsq = sqrt( temp_mnsq - temp_mean * temp_mean )
-   q_mnsq = sqrt( q_mnsq - q_mean * q_mean )
-   psfc_mnsq = sqrt( psfc_mnsq - psfc_mean * psfc_mean )
-   if ( has_cloud ) qcloud_mnsq = sqrt( qcloud_mnsq - qcloud_mean * qcloud_mean )
-   if ( has_rain )  qrain_mnsq  = sqrt( qrain_mnsq - qrain_mean * qrain_mean )
-   if ( has_ice )   qice_mnsq   = sqrt( qice_mnsq - qice_mean * qice_mean )
-   if ( has_snow )  qsnow_mnsq  = sqrt( qsnow_mnsq - qsnow_mean * qsnow_mean )
-   if ( has_graup ) qgraup_mnsq = sqrt( qgraup_mnsq - qgraup_mean * qgraup_mean )
-
-   output_file = 'u.mean' ! Output u.
-   open (gen_be_ounit, file = output_file, form='unformatted')
-   write(gen_be_ounit)dim1, dim2, dim3
-   write(gen_be_ounit)u_mean
-   close(gen_be_ounit)
-
-   output_file = 'u.stdv' ! Output u.
-   open (gen_be_ounit, file = output_file, form='unformatted')
-   write(gen_be_ounit)dim1, dim2, dim3
-   write(gen_be_ounit)u_mnsq
-   close(gen_be_ounit)
-
-   output_file = 'v.mean' ! Output v.
-   open (gen_be_ounit, file = output_file, form='unformatted')
-   write(gen_be_ounit)dim1, dim2, dim3
-   write(gen_be_ounit)v_mean
-   close(gen_be_ounit)
-
-   output_file = 'v.stdv' ! Output v.
-   open (gen_be_ounit, file = output_file, form='unformatted')
-   write(gen_be_ounit)dim1, dim2, dim3
-   write(gen_be_ounit)v_mnsq
-   close(gen_be_ounit)
-
-   output_file = 't.mean' ! Output t.
-   open (gen_be_ounit, file = output_file, form='unformatted')
-   write(gen_be_ounit)dim1, dim2, dim3
-   write(gen_be_ounit)temp_mean
-   close(gen_be_ounit)
-
-   output_file = 't.stdv' ! Output t.
-   open (gen_be_ounit, file = output_file, form='unformatted')
-   write(gen_be_ounit)dim1, dim2, dim3
-   write(gen_be_ounit)temp_mnsq
-   close(gen_be_ounit)
-
-   output_file = 'q.mean' ! Output q.
-   open (gen_be_ounit, file = output_file, form='unformatted')
-   write(gen_be_ounit)dim1, dim2, dim3
-   write(gen_be_ounit)q_mean
-   close(gen_be_ounit)
-
-   output_file = 'q.stdv' ! Output q.
-   open (gen_be_ounit, file = output_file, form='unformatted')
-   write(gen_be_ounit)dim1, dim2, dim3
-   write(gen_be_ounit)q_mnsq
-   close(gen_be_ounit)
-
-   output_file = 'ps.mean' ! Output ps.
-   open (gen_be_ounit, file = output_file, form='unformatted')
-   write(gen_be_ounit)dim1, dim2, dim3
-   write(gen_be_ounit)psfc_mean
-   close(gen_be_ounit)
-
-   output_file = 'ps.stdv' ! Output ps.
-   open (gen_be_ounit, file = output_file, form='unformatted')
-   write(gen_be_ounit)dim1, dim2, dim3
-   write(gen_be_ounit)psfc_mnsq
-   close(gen_be_ounit)
-
-   if ( has_cloud ) then
-      output_file = 'qcloud.mean' ! Output qcloud.
-      open (gen_be_ounit, file = output_file, form='unformatted')
-      write(gen_be_ounit)dim1, dim2, dim3
-      write(gen_be_ounit)qcloud_mean
-      close(gen_be_ounit)
-
-      output_file = 'qcloud.stdv' ! Output qcloud.
-      open (gen_be_ounit, file = output_file, form='unformatted')
-      write(gen_be_ounit)dim1, dim2, dim3
-      write(gen_be_ounit)qcloud_mnsq
-      close(gen_be_ounit)
-   end if
-
-   if ( has_rain ) then
-      output_file = 'qrain.mean' ! Output qrain.
-      open (gen_be_ounit, file = output_file, form='unformatted')
-      write(gen_be_ounit)dim1, dim2, dim3
-      write(gen_be_ounit)qrain_mean
-      close(gen_be_ounit)
-
-      output_file = 'qrain.stdv' ! Output qrain.
-      open (gen_be_ounit, file = output_file, form='unformatted')
-      write(gen_be_ounit)dim1, dim2, dim3
-      write(gen_be_ounit)qrain_mnsq
-      close(gen_be_ounit)
-   end if
-
-   if ( has_ice ) then
-      output_file = 'qice.mean' ! Output qice.
-      open (gen_be_ounit, file = output_file, form='unformatted')
-      write(gen_be_ounit)dim1, dim2, dim3
-      write(gen_be_ounit)qice_mean
-      close(gen_be_ounit)
-
-      output_file = 'qice.stdv' ! Output qice.
-      open (gen_be_ounit, file = output_file, form='unformatted')
-      write(gen_be_ounit)dim1, dim2, dim3
-      write(gen_be_ounit)qice_mnsq
-      close(gen_be_ounit)
-   end if
-
-   if ( has_snow ) then
-      output_file = 'qsnow.mean' ! Output qsnow.
-      open (gen_be_ounit, file = output_file, form='unformatted')
-      write(gen_be_ounit)dim1, dim2, dim3
-      write(gen_be_ounit)qsnow_mean
-      close(gen_be_ounit)
-
-      output_file = 'qsnow.stdv' ! Output qsnow.
-      open (gen_be_ounit, file = output_file, form='unformatted')
-      write(gen_be_ounit)dim1, dim2, dim3
-      write(gen_be_ounit)qsnow_mnsq
-      close(gen_be_ounit)
-   end if
-
-   if ( has_graup ) then
-      output_file = 'qgraup.mean' ! Output qgraup.
-      open (gen_be_ounit, file = output_file, form='unformatted')
-      write(gen_be_ounit)dim1, dim2, dim3
-      write(gen_be_ounit)qgraup_mean
-      close(gen_be_ounit)
-
-      output_file = 'qgraup.stdv' ! Output qgraup.
-      open (gen_be_ounit, file = output_file, form='unformatted')
-      write(gen_be_ounit)dim1, dim2, dim3
-      write(gen_be_ounit)qgraup_mnsq
-      close(gen_be_ounit)
-   end if
-
-   call da_free_unit(gen_be_iunit)
-   call da_free_unit(gen_be_ounit)
-
-#ifdef crayx1
 contains
 
+!-----------------------------------------------------------------------------
+
+#ifdef crayx1
    subroutine getarg(i, harg)
      implicit none
      character(len=*) :: harg
@@ -622,5 +277,589 @@ contains
    end subroutine getarg
 #endif
 
-end program gen_be_ep2
+!-----------------------------------------------------------------------------
 
+#ifdef DM_PARALLEL
+   !copied from module_dm.f90/da_module_dm due to linking issue with module_dm.o
+   subroutine mpaspect( p, minm, minn, procmin_m, procmin_n )
+      implicit none
+      integer p, m, n, mini, minm, minn, procmin_m, procmin_n
+      mini = 2*p
+      minm = 1
+      minn = p
+      do m = 1, p
+        if ( mod( p, m ) .eq. 0 ) then
+          n = p / m
+          if ( abs(m-n) .lt. mini                &
+               .and. m .ge. procmin_m            &
+               .and. n .ge. procmin_n            &
+             ) then
+            mini = abs(m-n)
+            minm = m
+            minn = n
+          end if
+        end if
+      end do
+!      if ( minm .lt. procmin_m .or. minn .lt. procmin_n ) then
+!        write( wrf_err_message , * )'mpaspect: unable to generate processor mesh.  stopping.'
+!        call da_wrf_message ( trim ( wrf_err_message ) )
+!        write( wrf_err_message , * )' procmin_m ', procmin_m
+!        call da_wrf_message ( trim ( wrf_err_message ) )
+!        write( wrf_err_message , * )' procmin_n ', procmin_n
+!        call da_wrf_message ( trim ( wrf_err_message ) )
+!        write( wrf_err_message , * )' p         ', p
+!        call da_wrf_message ( trim ( wrf_err_message ) )
+!        write( wrf_err_message , * )' minm      ', minm
+!        call da_wrf_message ( trim ( wrf_err_message ) )
+!        write( wrf_err_message , * )' minn      ', minn
+!        call da_wrf_message ( trim ( wrf_err_message ) )
+!        call da_wrf_error_fatal3("<stdin>",127,&
+!'da_module_dm: mpaspect' )
+!      end if
+   return
+   end subroutine mpaspect
+
+   subroutine split_grid( nprocs, ntx, nty, &
+                          nx_global, ny_global, &
+                          nx_grid,   ny_grid, &
+                          xs_grid,   ys_grid )
+      implicit none
+
+      integer, intent(in)  :: nprocs                               ! Total number of processors
+      integer, intent(in)  :: ntx, nty                             ! Number of tasks in x-y decomposition
+      integer, intent(in)  :: nx_global, ny_global                 ! Number of grid points in domain
+      integer, intent(out) :: nx_grid(nprocs), ny_grid(nprocs), &  ! Number of grid points in x-y patches
+                              xs_grid(nprocs), ys_grid(nprocs)     ! Starting grid points in x-y patches
+
+      integer, target   :: nx_vec(ntx), xs_vec(ntx)
+      integer, target   :: ny_vec(nty), ys_vec(nty)
+      integer, pointer  :: nvec(:), svec(:)
+      integer           :: mm, i, j, ii, iproc, igrid, ntasks, nglobal, fact
+
+      do igrid = 1, 2
+         if (igrid.eq.1) then
+            nvec => ny_vec
+            svec => ys_vec
+            ntasks = nty
+            nglobal = ny_global
+         else if (igrid.eq.2) then
+            nvec => nx_vec
+            svec => xs_vec
+            ntasks = ntx
+            nglobal = nx_global
+         end if
+
+         nvec = nglobal / ntasks
+         mm = mod( nglobal , ntasks )
+         do j = 1, ntasks
+            if ( mm .eq. 0 ) exit
+            nvec(j) = nvec(j) + 1
+            mm = mm - 1
+         end do
+
+         svec(1) = 1
+         do j = 1, ntasks
+            if (j .lt. ntasks) then
+               svec(j+1) = svec(j) + nvec(j)
+            end if
+         end do
+      end do
+
+      iproc = 0
+      do j = 1, nty
+      do i = 1, ntx
+         iproc = iproc + 1
+         ny_grid(iproc) = ny_vec(j)
+         ys_grid(iproc) = ys_vec(j)
+         nx_grid(iproc) = nx_vec(i)
+         xs_grid(iproc) = xs_vec(i)
+      end do
+      end do
+
+   end subroutine split_grid
+#endif
+
+!-----------------------------------------------------------------------------
+
+   subroutine gen_be_ep( filebase, varnames, nvars, remove_mean, write_binary, &
+                         ni, nj, nks, ne, ips, ipe, jps, jpe, &
+                         num_procs, myproc, &
+                         model_field, model_field_mean, model_field_stdv )
+
+      !EXTERNAL DEPENDENCIES:  root, stdout
+
+      use da_reporting, only : da_error,message
+
+      implicit none
+
+      include 'netcdf.inc'
+
+      character (len=filename_len), intent(in) :: filebase    ! General filename base.
+      character (len=10), intent(in)           :: varnames(nvars) ! Variable to search for.
+      logical, intent(in) :: remove_mean        ! Remove mean from standard fields.
+      logical, intent(in) :: write_binary       ! Write binary output for all fields.
+      integer, intent(in) :: ne, nvars          ! Ensemble/variable size
+      integer, intent(in) :: ni, nj             ! Global dimensions of grid (T points).
+      integer, intent(in) :: nks(nvars)         ! Array of # levels
+      integer, intent(in) :: ips, ipe, jps, jpe ! Local patch dimensions
+      integer, intent(in) :: num_procs, myproc
+      real, optional, intent(out) :: model_field      ( ips:ipe, jps:jpe, nks(1), ne, nvars )
+      real, optional, intent(out) :: model_field_mean ( ips:ipe, jps:jpe, nks(1), nvars )
+      real, optional, intent(out) :: model_field_stdv ( ips:ipe, jps:jpe, nks(1), nvars )
+
+      character (len=filename_len)   :: input_file       ! Input file.
+      character (len=3)     :: ce                        ! Member index -> character.
+      integer               :: i, j, k, imem, ivar, jvar ! Loop counters.
+      real                  :: imem_inv                  ! 1 / imem.
+
+      integer, parameter    :: nvars_max = 10
+      character (len=10)    :: var_shortnames(nvars_max), var_longnames(nvars_max)
+      logical               :: var_is_meteor(nvars_max)
+
+      integer               :: this_var
+
+      integer               :: ndims(nvars)
+      character (len=10)    :: shortnames(nvars)
+      character (len=10)    :: longnames(nvars)
+      type(field_type)      :: member_fields(nvars)
+      type(field_type)      :: mean_fields(nvars)
+      type(field_type)      :: stdv_fields(nvars)
+
+      integer :: cdfid            ! NETCDF file id.
+      integer :: id_var
+      integer :: rcode, rcode_     ! Return code (0=ok).
+      logical :: mean_vari_present
+      logical :: log_proc
+
+      log_proc = ( myproc == root )
+
+      ! long variable names
+      var_longnames(1:nvars_max) = &
+         [ character(len=10) :: "U", "V", "T", "QVAPOR", "PSFC", & 
+                      "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP" ]
+
+      ! short variable names
+      var_shortnames(1:nvars_max) = &
+         [ character(len=10) :: "u", "v", "t", "q", "ps", &
+                      "qcloud", "qrain", "qice", "qsnow", "qgraup" ]
+
+      var_is_meteor = (/.false., .false., .false., .false., .false., &
+                        .true. , .true. , .true. , .true. , .true. /)
+
+      this_var = 0
+
+      do ivar = 1, nvars
+         do jvar = 1, nvars_max
+            if (trim(varnames(ivar)) == trim(var_longnames(jvar))) then
+               this_var = jvar
+               exit
+            end if
+         end do
+         if (this_var < 1) then
+            write(message(1),'(A,A)') &
+            varnames(ivar), ' variable is not an option in gen_be_ep2'
+            if (log_proc) write(stdout,'(A)') message(1)
+            cycle
+         end if
+
+         ! Check variable is in e001 file:
+         input_file = trim(filebase)//'.e001'
+         rcode_ = nf_open(input_file(1:len_trim(input_file)), NF_NOwrite, cdfid)
+         rcode = nf_inq_varid ( cdfid, varnames(ivar), id_var )
+         rcode_ = nf_close(cdfid)
+         if ( rcode /= 0 ) then
+            write(message(1),'(A,A)') &
+               varnames(ivar), ' variable is not in input file'
+            if ( var_is_meteor(this_var) ) then
+               if (log_proc) write(stdout,'(A)') message(1)
+               cycle
+            else
+               call da_error(__FILE__,__LINE__,message(1:1))
+            end if
+         end if
+
+!---------------------------------------------------------------------------------------------
+         if (log_proc) write(stdout,'(/2A)') &
+            ' [0] Allocating fields for variable ',trim(varnames(ivar))
+!---------------------------------------------------------------------------------------------
+         ! cloud variable determination 
+         if ( var_is_meteor(this_var) .and. log_proc) write(stdout,'(A)')&
+            '          [cloud variable]'
+
+         shortnames(ivar) = var_shortnames(this_var)
+         longnames(ivar)  = var_longnames(this_var)
+         ndims(ivar) = 3
+         if (nks(ivar) == 1) ndims(ivar) = 2
+
+         ! Allocate data arrays in output fields:
+         allocate( member_fields(ivar) % data (ips:ipe, jps:jpe, 1:nks(ivar) ) )
+         allocate( mean_fields(ivar) % data   (ips:ipe, jps:jpe, 1:nks(ivar) ) )
+         allocate( stdv_fields(ivar) % data   (ips:ipe, jps:jpe, 1:nks(ivar) ) )
+         member_fields(ivar) % data = 0.0
+         mean_fields(ivar) % data = 0.0
+         stdv_fields(ivar) % data = 0.0
+      end do !ivar loop
+
+!---------------------------------------------------------------------------------------------
+      if (log_proc) write(stdout,'(/a)')&
+         ' [1] Generate mean and variance (read or compute)'
+!---------------------------------------------------------------------------------------------
+
+      !If mean/vari files exist, use those instead of calculating mean and stddev online
+      mean_vari_present = .false.
+
+      input_file = trim(filebase)//'.mean'
+      rcode = nf_open(input_file(1:len_trim(input_file)), NF_NOwrite, cdfid)
+      if (rcode /= 0) then
+         if (log_proc) write(stdout,'(A)') &
+            ' Mean file does not exist, computing mean/variance.'
+      else
+         rcode = nf_close(cdfid)
+         input_file = trim(filebase)//'.vari'
+         rcode = nf_open(input_file(1:len_trim(input_file)), NF_NOwrite, cdfid)
+         if (rcode /= 0) then
+            if (log_proc) write(stdout,'(A)') &
+               ' Variance file does not exist, computing mean/variance.'
+         else
+            rcode = nf_close(cdfid)
+            mean_vari_present = .true.
+         end if
+      end if
+
+
+      if (mean_vari_present) then
+         if (log_proc) write(stdout,'(A)') &
+            '         Reading vars from mean file...'
+         input_file = trim(filebase)//'.mean'
+         do ivar = 1, nvars
+            call read_field_from_nc( input_file, mean_fields(ivar) % data, longnames(ivar), &
+                                     ips, ipe, jps, jpe, nks(ivar), ndims(ivar) )
+         end do
+
+         if (log_proc) write(stdout,'(A)') &
+            '         Reading vars from variance file...'
+         input_file = trim(filebase)//'.vari'
+         do ivar = 1, nvars
+            call read_field_from_nc( input_file, stdv_fields(ivar) % data, longnames(ivar), &
+                                     ips, ipe, jps, jpe, nks(ivar), ndims(ivar) )
+            stdv_fields(ivar) % data = sqrt( stdv_fields(ivar) % data )
+         end do
+      else
+         do imem = 1, ne
+            write(ce,'(i3.3)')imem
+            if (log_proc) write(stdout,'(2A)') &
+               '         Working on ensemble member ',trim(ce)
+
+            input_file = trim(filebase)//'.e'//trim(ce)
+            do ivar = 1, nvars
+               call read_field_from_nc( input_file, member_fields(ivar) % data, longnames(ivar), &
+                                        ips, ipe, jps, jpe, nks(ivar), ndims(ivar) )
+               ! Sum values and square values:
+               mean_fields(ivar) % data = &
+                    mean_fields(ivar) % data + member_fields(ivar) % data
+
+               stdv_fields(ivar) % data = &
+                    stdv_fields(ivar) % data + member_fields(ivar) % data * member_fields(ivar) % data
+            end do
+         end do
+
+         ! Finalize mean and stdv
+         imem_inv = 1.0 / real ( ne )
+         do ivar = 1, nvars
+            mean_fields(ivar) % data = mean_fields(ivar) % data * imem_inv
+            stdv_fields(ivar) % data = stdv_fields(ivar) % data * imem_inv
+
+            stdv_fields(ivar) % data = &
+                sqrt( stdv_fields(ivar) % data - mean_fields(ivar) % data * mean_fields(ivar) % data )
+         end do
+      end if ! mean_vari_present
+
+!---------------------------------------------------------------------------------------------
+      if (log_proc) write(stdout,'(/a)') &
+         ' [2] Compute perturbations and output' 
+!---------------------------------------------------------------------------------------------
+
+      if ( remove_mean ) then
+         if (log_proc) write(stdout,'(a)') &
+      "  Calculate ensemble perturbations"
+      else
+         if (log_proc) write(stdout,'(a)') &
+      "  WARNING: Not removing ensemble mean (outputs are full-fields)"
+      end if
+
+      do imem = 1, ne
+         write(ce,'(i3.3)')imem
+         if (log_proc) write(stdout,'(2A)') &
+            '         Working on ensemble member ',trim(ce)
+         if (log_proc) write(stdout,'(A)')  &
+            '          Reading member field...'
+
+         input_file = trim(filebase)//'.e'//trim(ce)
+         do ivar = 1, nvars
+            call read_field_from_nc( input_file, member_fields(ivar) % data, longnames(ivar), &
+                                     ips, ipe, jps, jpe, nks(ivar), ndims(ivar) )
+
+            if ( remove_mean ) then
+               member_fields(ivar) % data = member_fields(ivar) % data - mean_fields(ivar) % data
+            end if
+
+            if ( present(model_field) ) then
+               model_field(:,:,1:nks(ivar),imem,ivar) = member_fields(ivar) % data
+            end if
+
+!            if ( write_binary ) then
+!               call write_fields_to_bin( member_fields(ivar:ivar), shortnames(ivar:ivar), &
+!                                        '.e'//trim(ce),&
+!                                        num_procs, myproc, 1, &
+!                                        ni, nj, nks(ivar:ivar), ips, ipe, jps, jpe )
+!            end if
+         end do
+         if ( write_binary ) then
+            if (log_proc) write(stdout,'(A)') &
+               '         Writing fields...'
+            call write_fields_to_bin( member_fields, shortnames, &
+                                     '.e'//trim(ce),&
+                                     num_procs, myproc, nvars, &
+                                     ni, nj, nks, ips, ipe, jps, jpe )
+         end if
+      end do
+
+      do ivar = 1, nvars
+         if ( present(model_field_mean) ) then
+            model_field_mean(:,:,1:nks(ivar),ivar) = mean_fields(ivar) % data
+         end if
+         if ( present(model_field_stdv) ) then
+            model_field_stdv(:,:,1:nks(ivar),ivar) = stdv_fields(ivar) % data
+         end if
+!         if ( write_binary ) then
+!            ! Write out mean/stdv field (stdv stored in stdv data arrays):
+!            call write_fields_to_bin( mean_fields(ivar:ivar), shortnames(ivar:ivar), &
+!                                     '.mean', &
+!                                     num_procs, myproc, 1, &
+!                                     ni, nj, nks(ivar:ivar), ips, ipe, jps, jpe )
+!
+!            call write_fields_to_bin( stdv_fields(ivar:ivar), shortnames(ivar:ivar), &
+!                                     '.stdv', &
+!                                     num_procs, myproc, 1, &
+!                                     ni, nj, nks(ivar:ivar), ips, ipe, jps, jpe )
+!         end if
+
+      end do
+      if ( write_binary ) then
+         ! Write out mean/stdv field (stdv stored in stdv data arrays):
+         if (log_proc) write(stdout,'(A)') &
+            '         Writing mean/stdv field...'
+         call write_fields_to_bin( mean_fields, shortnames, &
+                                  '.mean', &
+                                  num_procs, myproc, nvars, &
+                                  ni, nj, nks, ips, ipe, jps, jpe )
+
+         call write_fields_to_bin( stdv_fields, shortnames, &
+                                  '.stdv', &
+                                  num_procs, myproc, nvars, &
+                                  ni, nj, nks, ips, ipe, jps, jpe )
+      end if
+
+
+
+      ! Deallocate data arrays
+      do ivar = 1, nvars
+         deallocate( member_fields(ivar) % data )
+         deallocate( mean_fields(ivar) % data   )
+         deallocate( stdv_fields(ivar) % data   )
+      end do
+
+   end subroutine gen_be_ep
+
+!-----------------------------------------------------------------------------
+
+   subroutine read_field_from_nc( read_file, field, varname, &
+                                  ips, ipe, jps, jpe, nk, ndims )
+
+      use da_gen_be, only : da_get_field, da_get_trh
+
+      implicit none
+
+      character (len=filename_len), intent(in) :: read_file
+      character (len=10), intent(in)   :: varname
+      integer, intent(in)              :: ips, ipe, jps, jpe, nk, ndims
+      real, intent(inout)  :: field( ips:ipe, jps:jpe, 1:nk )
+
+      real, allocatable  :: ttmp(:,:)                 ! temperature.
+      real, allocatable  :: dummy(:,:)                ! dummy.
+      integer :: i, j, k, ierr
+
+
+      do k = 1, nk !Loop over this field''s 3rd dimension
+         if ( trim(varname) == "U" ) then
+            ! Read and interpolate u to mass pts:
+            if (k==1) allocate( dummy ( ips:ipe+1, jps:jpe)   ) ! u on Arakawa C-grid.
+            call da_get_field( read_file, varname, ndims, &
+                               ips, ipe+1, jps, jpe, k, dummy )
+            do j = jps, jpe
+               do i = ips, ipe
+                  field (i,j,k) = 0.5 * ( dummy(i,j) + dummy(i+1,j) )
+               end do
+            end do
+         else if ( trim(varname) == "V" ) then
+            ! Read and interpolate v to mass pts:
+            if (k==1) allocate( dummy ( ips:ipe,   jps:jpe+1) ) ! v on Arakawa C-grid.
+            call da_get_field( read_file, varname, ndims, &
+                               ips, ipe, jps, jpe+1, k, dummy )
+            do j = jps, jpe
+               do i = ips, ipe
+                  field (i,j,k) = 0.5 * ( dummy(i,j) + dummy(i,j+1) )
+               end do
+            end do
+         else if ( trim(varname) == "T" ) then
+            ! Read theta, and convert to temperature:
+            if (k==1) allocate( ttmp ( ips:ipe,   jps:jpe)   )
+            if (k==1) allocate( dummy( ips:ipe,   jps:jpe)   )
+            call da_get_trh( read_file, ips, ipe, jps, jpe, k, ttmp, dummy)
+            field (:,:,k) = ttmp(:,:)
+         else
+            ! Read all other variables
+            if (k==1) allocate( dummy( ips:ipe,   jps:jpe)   )
+            call da_get_field( read_file, varname, ndims, &
+                               ips, ipe, jps, jpe, k, dummy )
+            if ( trim(varname) == "QVAPOR" ) then
+               ! Convert mixing ratio to specific humidity:
+               field (:,:,k) = dummy(:,:) / ( 1.0 + dummy(:,:) )
+            else
+               ! 1-to-1 correspondance between netcdf field and analyzed variable
+               field (:,:,k) = dummy(:,:)
+            end if
+         end if
+      end do
+
+      ! Deallocate temporary arrays:
+      if (allocated(ttmp)) deallocate( ttmp )
+      if (allocated(dummy)) deallocate( dummy )
+
+!#ifdef DM_PARALLEL
+!      call mpi_barrier(MPI_COMM_WORLD,ierr)
+!#endif
+
+   end subroutine read_field_from_nc
+
+!-----------------------------------------------------------------------------
+
+   subroutine write_fields_to_bin( fields_local, varnames, suf, &
+                                  num_procs, myproc, nvars, &
+                                  ni, nj, nks, ips, ipe, jps, jpe )
+
+      use da_tools_serial, only : da_get_unit, da_free_unit
+      use da_par_util1, only: true_mpi_real
+
+      implicit none
+
+      type(field_type), intent(in)  :: fields_local(nvars)
+      character (len=*), intent(in) :: varnames(nvars), suf
+      integer, intent(in)           :: num_procs, myproc, nvars
+      integer, intent(in)           :: ni, nj, nks(nvars), ips, ipe, jps, jpe
+
+      integer :: write_proc
+      integer            :: write_unit, k !, j
+      real, allocatable  :: globbuf(:,:,:), locbuf(:)
+
+#ifdef DM_PARALLEL
+      integer :: ips_, ipe_, jps_, jpe_
+      integer :: icount, jcount, tag, iproc, ierr
+      integer :: status(MPI_STATUS_SIZE)
+#endif
+
+      do ivar = 1, nvars
+         write_proc = mod(ivar - 1, num_procs)
+
+         if (myproc == write_proc) then
+            ! Create file and allocate global buffer
+            call da_get_unit(write_unit)
+
+            open (write_unit, &
+                  file = trim(varnames(ivar))//trim(suf), &
+                  form='unformatted')
+            allocate( globbuf(1:ni, 1:nj, 1:nks(ivar)) )
+         end if
+
+#ifdef DM_PARALLEL
+         if (num_procs > 1) then
+            !Communicate fields_local segments to globbuf
+            do iproc = 0, num_procs - 1
+               ips_ = ips
+               ipe_ = ipe
+               jps_ = jps
+               jpe_ = jpe
+               call mpi_bcast(ips_, 1, mpi_integer, iproc, MPI_COMM_WORLD, ierr)
+               call mpi_bcast(ipe_, 1, mpi_integer, iproc, MPI_COMM_WORLD, ierr)
+               call mpi_bcast(jps_, 1, mpi_integer, iproc, MPI_COMM_WORLD, ierr)
+               call mpi_bcast(jpe_, 1, mpi_integer, iproc, MPI_COMM_WORLD, ierr)
+
+               icount = ipe_ - ips_ + 1
+               jcount = jpe_ - jps_ + 1
+!!!               allocate( locbuf(1:icount) )
+               allocate( locbuf(1:icount*jcount) )
+               do k = 1, nks(ivar)
+!!!                  do j = jps, jpe
+!!!                     tag = 20*j+300000*k
+                     tag = iproc+10000*k
+                     if (myproc == iproc) then
+                        if (myproc == write_proc) then
+                           globbuf( ips_:ipe_, jps_:jpe_, k ) = fields_local(ivar) % data(:,:, k )
+                        else
+                   
+!!!                        locbuf = fields_local(ivar) % data( ips:ipe, j, k )
+!!!                        call MPI_SEND( locbuf, icount, true_mpi_real, write_proc, tag, MPI_COMM_WORLD, ierr)
+                           locbuf = reshape( fields_local(ivar) % data(:,:, k ), (/ icount * jcount /) )
+                           call MPI_SEND( locbuf, icount * jcount, true_mpi_real, &
+                                          write_proc, tag, MPI_COMM_WORLD, ierr)
+                        end if
+                     else if (myproc == write_proc) then
+!!!                        call MPI_RECV( locbuf, icount, true_mpi_real, iproc,      tag, MPI_COMM_WORLD, status, ierr)
+!!!                        globbuf( ips:ipe, j, k ) = locbuf
+                        call MPI_RECV( locbuf, icount * jcount, true_mpi_real, &
+                                       iproc,      tag, MPI_COMM_WORLD, status, ierr)
+                        globbuf( ips_:ipe_, jps_:jpe_, k ) = reshape( locbuf, (/icount, jcount/) )
+                     end if
+!!!                  end do
+
+               end do
+               deallocate( locbuf )
+            end do
+
+!            call mpi_barrier(MPI_COMM_WORLD,ierr)
+
+         else
+#endif
+            globbuf = fields_local(ivar) % data
+#ifdef DM_PARALLEL
+         end if
+#endif
+         if (myproc == write_proc) then
+            ! Write to file, close file, and deallocate buffer
+            write(write_unit) ni, nj, nks(ivar)
+            write(write_unit) globbuf
+
+            close(write_unit)
+
+            deallocate( globbuf )
+
+            call da_free_unit(write_unit)
+         end if
+      end do
+
+   end subroutine write_fields_to_bin
+
+!-----------------------------------------------------------------------------
+
+!   subroutine logger(mess, fmt, proc)
+!
+!      implicit none
+!      character(len=*) :: mess
+!      character(len=*) :: fmt
+!      integer, parameter :: log_proc = root
+!
+!      if (proc == log_proc) write(stdout,fmt) mess
+!
+!   end subroutine
+
+end program gen_be_ep2

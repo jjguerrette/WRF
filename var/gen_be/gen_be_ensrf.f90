@@ -218,7 +218,7 @@ print *, ni, nj, nk, nv, nij, nijk, nv3d, nv2d, nijkv
          do k = 1, nkk(v)
 
             if ( varr(v) == 'U' ) then
-               call da_get_field( input_file, varr(v), 3, niu, nj, nk, k, uc )
+               call da_get_field( input_file, varr(v), 3, 1, niu, 1, nj, k, uc )
                do j = 1, nj
                   do i = 1, ni
                      field(i,j) = 0.5 * ( uc(i,j) + uc(i+1,j) )
@@ -227,7 +227,7 @@ print *, ni, nj, nk, nv, nij, nijk, nv3d, nv2d, nijkv
             end if
 
             if ( varr(v) == 'V' ) then
-               call da_get_field( input_file, varr(v), 3, ni, njv, nk, k, vc )
+               call da_get_field( input_file, varr(v), 3, 1, ni, 1, njv, k, vc )
                do j = 1, nj
                   do i = 1, ni
                      field(i,j) = 0.5 * ( vc(i,j) + vc(i,j+1) )
@@ -237,18 +237,18 @@ print *, ni, nj, nk, nv, nij, nijk, nv3d, nv2d, nijkv
 
             if ( varr(v) == "T" ) then
 !              Read theta, and convert to temperature:
-               call da_get_trh( input_file, ni, nj, nk, k, field, dummy )
+               call da_get_trh( input_file, 1, ni, 1, nj, k, field, dummy )
             end if
 
 !           Read mixing ratio, and convert to specific humidity:
             if ( varr(v) == 'QVAPOR' ) then
-               call da_get_field( input_file, varr(v), 3, ni, nj, nk, k, field )
+               call da_get_field( input_file, varr(v), 3, 1, ni, 1, nj, k, field )
                field(:,:) = field(:,:) / ( 1.0 + field(:,:) )
             end if
 
 !           Read surface pressure:
             if ( varr(v) == 'PSFC' ) then
-               call da_get_field( input_file, varr(v), 2, ni, nj, nk, k, field )
+               call da_get_field( input_file, varr(v), 2, 1, ni, 1, nj, k, field )
             end if
 
 !           Fill 4D array:

@@ -16,6 +16,7 @@ GEN_BE_OBJS = da_etkf.o \
 	da_memory.o \
 	da_reporting.o \
 	da_tools_serial.o \
+	da_par_util1.o \
 	module_ffts.o 
 
 be : \
@@ -100,19 +101,28 @@ gen_be_ep1.exe     : gen_be_ep1.o $(GEN_BE_OBJS) $(GEN_BE_LIBS)
 	$(SFC) -o gen_be_ep1.exe $(LDFLAGS) $(GEN_BE_OBJS)  gen_be_ep1.o $(GEN_BE_LIB)
 	@ if test -x $@ ;  then cd ../da; $(LN) ../build/$@ . ; fi
 
-gen_be_ep2.exe     : gen_be_ep2.o $(GEN_BE_OBJS) $(GEN_BE_LIBS)
+gen_be_ep2.exe     : $(WRFVAR_LIBS) gen_be_ep2.o $(GEN_BE_OBJS) $(GEN_BE_LIBS)
 	$(RM) $@
 	$(SED_FTN) gen_be_ep2.f90 > gen_be_ep2.b
 	x=`echo "$(SFC)" | awk '{print $$1}'` ; export x ; \
         if [ $$x = "gfortran" ] ; then \
            echo removing external declaration of iargc for gfortran ; \
-           $(CPP) $(CPPFLAGS) $(FPPFLAGS) gen_be_ep2.b | sed '/integer *, *external.*iargc/d' > gen_be_ep2.f ;\
+           $(CPP) $(CPPFLAGS) $(FPPFLAGS) -I$(NETCDF)/include gen_be_ep2.b | sed '/integer *, *external.*iargc/d' > gen_be_ep2.f ;\
         else \
-           $(CPP) $(CPPFLAGS) $(FPPFLAGS) gen_be_ep2.b > gen_be_ep2.f ; \
+           $(CPP) $(CPPFLAGS) $(FPPFLAGS) -I$(NETCDF)/include gen_be_ep2.b > gen_be_ep2.f ; \
         fi
 	$(RM) gen_be_ep2.b
+#	@ if echo $(ARCHFLAGS) | $(FGREP) 'DVAR4D'; then \
+#          echo COMPILING gen_be_ep2.f90 for 4DVAR ; \
+#          $(WRF_SRC_ROOT_DIR)/var/build/da_name_space.pl gen_be_ep2.f > gen_be_ep2.f.tmp ; \
+#          mv gen_be_ep2.f.tmp gen_be_ep2.f ; \
+#        fi
 	$(SFC) -c $(FCFLAGS) $(PROMOTION) gen_be_ep2.f
-	$(SFC) -o gen_be_ep2.exe $(LDFLAGS) $(GEN_BE_OBJS)  gen_be_ep2.o $(GEN_BE_LIB)
+	if [ -n "$(DMPARALLEL)" ] ;   then \
+	$(DM_FC) -o gen_be_ep2.exe $(LDFLAGS) $(GEN_BE_OBJS)  gen_be_ep2.o $(GEN_BE_LIB) ;\
+	else \
+	$(SFC) -o gen_be_ep2.exe $(LDFLAGS) $(GEN_BE_OBJS)  gen_be_ep2.o $(GEN_BE_LIB) ;\
+	fi	
 	@ if test -x $@ ;  then cd ../da; $(LN) ../build/$@ . ; fi
 
 gen_be_stage1.exe : gen_be_stage1.o $(GEN_BE_OBJS) $(GEN_BE_LIBS)

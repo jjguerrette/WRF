@@ -186,13 +186,13 @@ program gen_be_stage0_wrf
    allocate( mapfac_v(1:dim1,1:dim2+1) )
 
    var = "XLAT"
-   call da_get_field( input_file, var, 2, dim1, dim2, 1, 1, xlat )
+   call da_get_field( input_file, var, 2, 1, dim1, 1, dim2, 1, xlat )
    var = "MAPFAC_M"
-   call da_get_field( input_file, var, 2, dim1, dim2, 1, 1, mapfac_m )
+   call da_get_field( input_file, var, 2, 1, dim1, 1, dim2, 1, mapfac_m )
    var = "MAPFAC_U"
-   call da_get_field( input_file, var, 2, dim1+1, dim2, 1, 1, mapfac_u )
+   call da_get_field( input_file, var, 2, 1, dim1+1, 1, dim2, 1, mapfac_u )
    var = "MAPFAC_V"
-   call da_get_field( input_file, var, 2, dim1, dim2+1, 1, 1, mapfac_v )
+   call da_get_field( input_file, var, 2, 1, dim1, 1, dim2+1, 1, mapfac_v )
 
 !  Initialize FFT coefficients:
 
@@ -266,9 +266,9 @@ program gen_be_stage0_wrf
 
          ! Read u, v:
          var = "U"
-         call da_get_field( input_file, var, 3, dim1s, dim2, dim3, k, u2d )
+         call da_get_field( input_file, var, 3, 1, dim1s, 1, dim2, k, u2d )
          var = "V"
-         call da_get_field( input_file, var, 3, dim1, dim2s, dim3, k, v2d )
+         call da_get_field( input_file, var, 3, 1, dim1, 1, dim2s, k, v2d )
 
          ! Calculate vorticity (in center of mass grid on WRF's Arakawa C-grid):
          call da_uv_to_vor_c( dim1, dim2, ds, &
@@ -320,7 +320,7 @@ program gen_be_stage0_wrf
          end if 
 
 !        Read mass fields, and convert to T and rh:
-         call da_get_trh( input_file, dim1, dim2, dim3, k, temp2d, rh2d )
+         call da_get_trh( input_file, 1, dim1, 1, dim2, k, temp2d, rh2d )
          temp(:,:,k) = temp2d(:,:)
          rh(:,:,k) = 0.01 * rh2d(:,:) ! *0.01 to conform with WRF-Var units.
       end do
@@ -329,7 +329,7 @@ program gen_be_stage0_wrf
 
 !     Finally, extract surface pressure:
       var = "PSFC"
-      call da_get_field( input_file, var, 2, dim1, dim2, dim3, 1, psfc )
+      call da_get_field( input_file, var, 2, 1, dim1, 1, dim2, 1, psfc )
 
 !     Write out ensemble forecasts for this member:
       output_file = 'tmp.e'//ce  
