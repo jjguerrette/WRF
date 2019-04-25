@@ -187,7 +187,24 @@ subroutine da_setup_be_regional(xb, be, grid)
          write(unit=message(2),fmt='(3x,a,3i4)') "in be.dat: ni, nj, nk = ",ni, nj, nk
          write(unit=message(3),fmt='(3x,a,3i4)') "in fg:     ix, jy, kz = ",ix, jy, kz
          write(message(4),'(a)') 'be.dat need to be generated using data consistent with the assimilation domain.'
-         call da_error(__FILE__,__LINE__,message(1:4))
+         if ( .not. force_use_be ) then
+            call da_error(__FILE__,__LINE__,message(1:4))
+         else ! force_use_be
+            ! force_use_be requires bin_type=5 and nk=kz
+            if ( nk /= kz .or. bin_type /= 5 ) then
+               if ( nk /= kz ) then
+                  write(message(4),'(a)') 'force_use_be still requires consistent vertical levels between fg and be.dat.'
+                  call da_error(__FILE__,__LINE__,message(1:4))
+               end if
+               if ( bin_type /= 5) then
+                  write(message(4),'(a)') 'force_use_be requires bin_type=5 be.dat.'
+                  call da_error(__FILE__,__LINE__,message(1:4))
+               end if
+            else
+               write(message(4),'(a)') 'Continue because of force_use_be=true.'
+               call da_warning(__FILE__,__LINE__,message(1:4))
+            end if
+         end if
       end if
    else  ! when interpolate_stats = true
       ! Must use the domain averaged Reg. Coeff.:
