@@ -50,7 +50,7 @@ program gen_be_ep2
    integer, external     :: iargc
    integer               :: numarg
    integer               :: ne                        ! Ensemble size
-   integer               :: ivar                      ! Loop counter.
+!   integer               :: ivar                      ! Loop counter.
    integer               :: ni, nj, nk                ! Global dimensions of grid (T points).
    integer               :: ips, ipe, jps, jpe        ! Local patch dimensions
    integer               :: mp_physics                ! microphysics option
@@ -759,7 +759,7 @@ contains
       integer, intent(in)           :: ni, nj, nks(nvars), ips, ipe, jps, jpe
 
       integer :: write_proc
-      integer            :: write_unit, k !, j
+      integer            :: write_unit, k, jvar !, j
       real, allocatable  :: globbuf(:,:,:), locbuf(:)
 
 #ifdef DM_PARALLEL
@@ -768,18 +768,11 @@ contains
       integer :: status(MPI_STATUS_SIZE)
 #endif
 
-      do ivar = 1, nvars
-         write_proc = mod(ivar - 1, num_procs)
+      do jvar = 1, nvars
+         write_proc = mod(jvar - 1, num_procs)
 
-         if (myproc == write_proc) then
-            ! Create file and allocate global buffer
-            call da_get_unit(write_unit)
-
-            open (write_unit, &
-                  file = trim(varnames(ivar))//trim(suf), &
-                  form='unformatted')
-            allocate( globbuf(1:ni, 1:nj, 1:nks(ivar)) )
-         end if
+         ! Allocate global buffer
+         if (myproc == write_proc) allocate( globbuf(1:ni, 1:nj, 1:nks(jvar)) )
 
 #ifdef DM_PARALLEL
          if (num_procs > 1) then
@@ -797,32 +790,37 @@ contains
                icount = ipe_ - ips_ + 1
                jcount = jpe_ - jps_ + 1
 !!!               allocate( locbuf(1:icount) )
-               allocate( locbuf(1:icount*jcount) )
-               do k = 1, nks(ivar)
+               allocate( locbuf(1:icount*jcount*nks(jvar)) )
+!!!               do k = 1, nks(jvar)
 !!!                  do j = jps, jpe
 !!!                     tag = 20*j+300000*k
-                     tag = iproc+10000*k
+!!!                     tag = iproc+10000*k
+                     tag = iproc+10000*jvar
                      if (myproc == iproc) then
                         if (myproc == write_proc) then
-                           globbuf( ips_:ipe_, jps_:jpe_, k ) = fields_local(ivar) % data(:,:, k )
+!                           globbuf( ips_:ipe_, jps_:jpe_, k ) = fields_local(jvar) % data(:,:, k )
+                           globbuf( ips_:ipe_, jps_:jpe_,1:nks(jvar)) = fields_local(jvar) % data(:,:,1:nks(jvar))
                         else
                    
-!!!                        locbuf = fields_local(ivar) % data( ips:ipe, j, k )
+!!!                        locbuf = fields_local(jvar) % data( ips:ipe, j, k )
 !!!                        call MPI_SEND( locbuf, icount, true_mpi_real, write_proc, tag, MPI_COMM_WORLD, ierr)
-                           locbuf = reshape( fields_local(ivar) % data(:,:, k ), (/ icount * jcount /) )
-                           call MPI_SEND( locbuf, icount * jcount, true_mpi_real, &
+!                           locbuf = reshape( fields_local(jvar) % data(:,:, k ), (/ icount * jcount /) )
+                           locbuf = reshape( fields_local(jvar) % data(:,:,:), (/ icount * jcount * nks(jvar)/) )
+                           call MPI_SEND( locbuf, icount * jcount * nks(jvar), true_mpi_real, &
                                           write_proc, tag, MPI_COMM_WORLD, ierr)
                         end if
                      else if (myproc == write_proc) then
 !!!                        call MPI_RECV( locbuf, icount, true_mpi_real, iproc,      tag, MPI_COMM_WORLD, status, ierr)
 !!!                        globbuf( ips:ipe, j, k ) = locbuf
-                        call MPI_RECV( locbuf, icount * jcount, true_mpi_real, &
+                        call MPI_RECV( locbuf, icount * jcount * nks(jvar), true_mpi_real, &
                                        iproc,      tag, MPI_COMM_WORLD, status, ierr)
-                        globbuf( ips_:ipe_, jps_:jpe_, k ) = reshape( locbuf, (/icount, jcount/) )
+!                        globbuf( ips_:ipe_, jps_:jpe_, k ) = reshape( locbuf, (/icount, jcount/) )
+                        globbuf( ips_:ipe_, jps_:jpe_, 1:nks(jvar) ) = reshape( locbuf, (/icount, jcount, nks(jvar)/) )
+
                      end if
 !!!                  end do
 
-               end do
+!!!               end do
                deallocate( locbuf )
             end do
 
@@ -830,20 +828,23 @@ contains
 
          else
 #endif
-            globbuf = fields_local(ivar) % data
+            globbuf = fields_local(jvar) % data
 #ifdef DM_PARALLEL
          end if
 #endif
          if (myproc == write_proc) then
-            ! Write to file, close file, and deallocate buffer
-            write(write_unit) ni, nj, nks(ivar)
+            ! Create/write/close file and deallocate buffer
+            call da_get_unit(write_unit)
+            open (write_unit, &
+                  file = trim(varnames(jvar))//trim(suf), &
+                  form='unformatted')
+            write(write_unit) ni, nj, nks(jvar)
             write(write_unit) globbuf
-
             close(write_unit)
+            call da_free_unit(write_unit)
 
             deallocate( globbuf )
 
-            call da_free_unit(write_unit)
          end if
       end do
 
