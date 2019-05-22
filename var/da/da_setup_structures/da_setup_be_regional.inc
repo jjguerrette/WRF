@@ -1764,7 +1764,7 @@ subroutine da_setup_be_regional(xb, be, grid)
 
 !     Alpha eigenvalues and eigenvectors:
       allocate (be % alpha % val(1:jy,1:mz)) ! Not using jy dimension but here for consistency.
-      allocate (be % alpha % evec(1:nj,1:nk,1:mz))
+      allocate (be % alpha % evec(1:jy,1:nk,1:mz))
 
       if ( anal_type_hybrid_dual_res ) then
          deallocate(be % alpha % val, be % alpha % evec)
