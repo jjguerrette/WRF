@@ -128,7 +128,7 @@ module da_minimisation
       da_jo_and_grady_rain, da_get_hr_rain, da_transform_xtoy_rain, &
       da_transform_xtoy_rain_adj
 
-   use da_reporting, only : da_message, da_warning, da_error
+   use da_reporting, only : da_message, da_warning, da_error, message
    use da_satem, only : da_calculate_grady_satem, da_ao_stats_satem, &
       da_oi_stats_satem, da_get_innov_vector_satem, da_residual_satem, &
       da_jo_and_grady_satem

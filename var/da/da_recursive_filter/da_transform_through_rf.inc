@@ -26,11 +26,27 @@ subroutine da_transform_through_rf(grid,mz, rf_alpha, val,field, scaling)
    
    logical, optional, intent(in) :: scaling
 
+   character(len=10) :: this_time
+   character(len=8) :: this_date
+
+   integer :: dy_i, hr_i, mn_i, sc_i, msc_i, &
+              dy_f, hr_f, mn_f, sc_f, msc_f
+   real    :: time_sec_i, time_sec_f
+
+
    !----------------------------------------------------------------------
    ! [1.0]: Initialise:
    !----------------------------------------------------------------------  
 
    if (trace_use_dull) call da_trace_entry("da_transform_through_rf")
+
+call date_and_time(date=this_date, time=this_time)
+read(this_date(7:8),'(I2.2)') dy_i
+read(this_time(1:2),'(I2.2)') hr_i
+read(this_time(3:4),'(I2.2)') mn_i
+read(this_time(5:6),'(I2.2)') sc_i
+read(this_time(8:10),'(I3.3)') msc_i
+time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
 
    rf_passes_over_two = rf_passes / 2
    
@@ -74,6 +90,18 @@ subroutine da_transform_through_rf(grid,mz, rf_alpha, val,field, scaling)
    end do
    !$OMP END PARALLEL DO
 
+call date_and_time(date=this_date, time=this_time)
+read(this_date(7:8),'(I2.2)') dy_f
+read(this_time(1:2),'(I2.2)') hr_f
+read(this_time(3:4),'(I2.2)') mn_f
+read(this_time(5:6),'(I2.2)') sc_f
+read(this_time(8:10),'(I3.3)') msc_f
+time_sec_f = real( ( ( hr_f * 60 + mn_f ) * 60 + sc_f) * 1000 + msc_f ) / 1000.0
+
+write(unit=message(1),fmt='(A,F12.4,A)') &
+   '   inside da_transform_through_rf: init duration: ', time_sec_f - time_sec_i + real(dy_f - dy_i) * 86400.0, ' sec.'
+call da_message(message(1:1))
+
    !-------------------------------------------------------------------------
    ! [2.0]: Perform 1D recursive filter in x-direction:
    !-------------------------------------------------------------------------
@@ -81,7 +109,36 @@ subroutine da_transform_through_rf(grid,mz, rf_alpha, val,field, scaling)
    ! [2.1] Apply (i',j',k -> i,j',k') (grid%xp%v1z -> grid%xp%v1x)
    ! convert from vertical column to x-stripe
 
+call date_and_time(date=this_date, time=this_time)
+read(this_date(7:8),'(I2.2)') dy_i
+read(this_time(1:2),'(I2.2)') hr_i
+read(this_time(3:4),'(I2.2)') mn_i
+read(this_time(5:6),'(I2.2)') sc_i
+read(this_time(8:10),'(I3.3)') msc_i
+time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
+
    call da_transpose_z2x (grid)
+
+call date_and_time(date=this_date, time=this_time)
+read(this_date(7:8),'(I2.2)') dy_f
+read(this_time(1:2),'(I2.2)') hr_f
+read(this_time(3:4),'(I2.2)') mn_f
+read(this_time(5:6),'(I2.2)') sc_f
+read(this_time(8:10),'(I3.3)') msc_f
+time_sec_f = real( ( ( hr_f * 60 + mn_f ) * 60 + sc_f) * 1000 + msc_f ) / 1000.0
+
+write(unit=message(1),fmt='(A,F12.4,A)') &
+   '   inside da_transform_through_rf: da_transpose_z2x duration: ', time_sec_f - time_sec_i + real(dy_f - dy_i) * 86400.0, ' sec.'
+call da_message(message(1:1))
+
+call date_and_time(date=this_date, time=this_time)
+read(this_date(7:8),'(I2.2)') dy_i
+read(this_time(1:2),'(I2.2)') hr_i
+read(this_time(3:4),'(I2.2)') mn_i
+read(this_time(5:6),'(I2.2)') sc_i
+read(this_time(8:10),'(I3.3)') msc_i
+time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
+
 
    ! [2.2] Apply 1D filter in x direction:
 
@@ -103,6 +160,18 @@ subroutine da_transform_through_rf(grid,mz, rf_alpha, val,field, scaling)
    end do
    !$OMP END PARALLEL DO
 
+call date_and_time(date=this_date, time=this_time)
+read(this_date(7:8),'(I2.2)') dy_f
+read(this_time(1:2),'(I2.2)') hr_f
+read(this_time(3:4),'(I2.2)') mn_f
+read(this_time(5:6),'(I2.2)') sc_f
+read(this_time(8:10),'(I3.3)') msc_f
+time_sec_f = real( ( ( hr_f * 60 + mn_f ) * 60 + sc_f) * 1000 + msc_f ) / 1000.0
+
+write(unit=message(1),fmt='(A,F12.4,A)') &
+   '   inside da_transform_through_rf: da_recursive_filter_1d(x) duration: ', time_sec_f - time_sec_i + real(dy_f - dy_i) * 86400.0, ' sec.'
+call da_message(message(1:1))
+
    !-------------------------------------------------------------------------
    ! [3.0]: Perform 1D recursive filter in y-direction:
    !-------------------------------------------------------------------------
@@ -110,7 +179,36 @@ subroutine da_transform_through_rf(grid,mz, rf_alpha, val,field, scaling)
    ! [3.1] Apply (i, j' ,k' -> i', j ,k') (grid%xp%v1x -> grid%xp%v1y)
    ! convert from vertical column to y-stripe
 
+call date_and_time(date=this_date, time=this_time)
+read(this_date(7:8),'(I2.2)') dy_i
+read(this_time(1:2),'(I2.2)') hr_i
+read(this_time(3:4),'(I2.2)') mn_i
+read(this_time(5:6),'(I2.2)') sc_i
+read(this_time(8:10),'(I3.3)') msc_i
+time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
+
    call da_transpose_x2y (grid)
+
+call date_and_time(date=this_date, time=this_time)
+read(this_date(7:8),'(I2.2)') dy_f
+read(this_time(1:2),'(I2.2)') hr_f
+read(this_time(3:4),'(I2.2)') mn_f
+read(this_time(5:6),'(I2.2)') sc_f
+read(this_time(8:10),'(I3.3)') msc_f
+time_sec_f = real( ( ( hr_f * 60 + mn_f ) * 60 + sc_f) * 1000 + msc_f ) / 1000.0
+
+write(unit=message(1),fmt='(A,F12.4,A)') &
+   '   inside da_transform_through_rf: da_transpose_x2y duration: ', time_sec_f - time_sec_i + real(dy_f - dy_i) * 86400.0, ' sec.'
+call da_message(message(1:1))
+
+
+call date_and_time(date=this_date, time=this_time)
+read(this_date(7:8),'(I2.2)') dy_i
+read(this_time(1:2),'(I2.2)') hr_i
+read(this_time(3:4),'(I2.2)') mn_i
+read(this_time(5:6),'(I2.2)') sc_i
+read(this_time(8:10),'(I3.3)') msc_i
+time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
 
    ! [3.2] Apply 1D filter in y direction:
 
@@ -131,15 +229,55 @@ subroutine da_transform_through_rf(grid,mz, rf_alpha, val,field, scaling)
       end do
    end do
    !$OMP END PARALLEL DO
-   
+
+call date_and_time(date=this_date, time=this_time)
+read(this_date(7:8),'(I2.2)') dy_f
+read(this_time(1:2),'(I2.2)') hr_f
+read(this_time(3:4),'(I2.2)') mn_f
+read(this_time(5:6),'(I2.2)') sc_f
+read(this_time(8:10),'(I3.3)') msc_f
+time_sec_f = real( ( ( hr_f * 60 + mn_f ) * 60 + sc_f) * 1000 + msc_f ) / 1000.0
+
+write(unit=message(1),fmt='(A,F12.4,A)') &
+   '   inside da_transform_through_rf: da_recursive_filter_1d(y) duration: ', time_sec_f - time_sec_i + real(dy_f - dy_i) * 86400.0, ' sec.'
+call da_message(message(1:1))
+  
    !-------------------------------------------------------------------------
    ! [4.0]: Perform 1D recursive filter in y-direction:
    !-------------------------------------------------------------------------
 
    ! [4.1] Apply (i',j,k' -> i',j',k) (grid%xp%v1y -> grid%xp%v1z)
    ! convert from y-stripe to vertical column.
-   
+
+call date_and_time(date=this_date, time=this_time)
+read(this_date(7:8),'(I2.2)') dy_i
+read(this_time(1:2),'(I2.2)') hr_i
+read(this_time(3:4),'(I2.2)') mn_i
+read(this_time(5:6),'(I2.2)') sc_i
+read(this_time(8:10),'(I3.3)') msc_i
+time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
+
    call da_transpose_y2z (grid)
+
+call date_and_time(date=this_date, time=this_time)
+read(this_date(7:8),'(I2.2)') dy_f
+read(this_time(1:2),'(I2.2)') hr_f
+read(this_time(3:4),'(I2.2)') mn_f
+read(this_time(5:6),'(I2.2)') sc_f
+read(this_time(8:10),'(I3.3)') msc_f
+time_sec_f = real( ( ( hr_f * 60 + mn_f ) * 60 + sc_f) * 1000 + msc_f ) / 1000.0
+
+write(unit=message(1),fmt='(A,F12.4,A)') &
+   '   inside da_transform_through_rf: da_transpose_y2z duration: ', time_sec_f - time_sec_i + real(dy_f - dy_i) * 86400.0, ' sec.'
+call da_message(message(1:1))
+
+call date_and_time(date=this_date, time=this_time)
+read(this_date(7:8),'(I2.2)') dy_i
+read(this_time(1:2),'(I2.2)') hr_i
+read(this_time(3:4),'(I2.2)') mn_i
+read(this_time(5:6),'(I2.2)') sc_i
+read(this_time(8:10),'(I3.3)') msc_i
+time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
 
    ! [4.2] Transform filtered field to dimensional space:
 
@@ -172,6 +310,19 @@ subroutine da_transform_through_rf(grid,mz, rf_alpha, val,field, scaling)
          end do
       end if
    end if
+
+call date_and_time(date=this_date, time=this_time)
+read(this_date(7:8),'(I2.2)') dy_f
+read(this_time(1:2),'(I2.2)') hr_f
+read(this_time(3:4),'(I2.2)') mn_f
+read(this_time(5:6),'(I2.2)') sc_f
+read(this_time(8:10),'(I3.3)') msc_f
+time_sec_f = real( ( ( hr_f * 60 + mn_f ) * 60 + sc_f) * 1000 + msc_f ) / 1000.0
+
+write(unit=message(1),fmt='(A,F12.4,A)') &
+   '   inside da_transform_through_rf: finalize duration: ', time_sec_f - time_sec_i + real(dy_f - dy_i) * 86400.0, ' sec.'
+call da_message(message(1:1))
+
    if (trace_use_dull) call da_trace_exit("da_transform_through_rf")
 
 end subroutine da_transform_through_rf

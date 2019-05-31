@@ -23,6 +23,8 @@ module da_recursive_filter
    use da_rfz_cv3, only : da_rfz
    use da_rf_cv3, only : smoothx, smoothy
 
+   use da_reporting, only : message, da_message
+
    implicit none
 
    contains
