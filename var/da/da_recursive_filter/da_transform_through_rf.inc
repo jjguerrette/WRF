@@ -21,8 +21,8 @@ subroutine da_transform_through_rf(grid,mz, rf_alpha, val,field, scaling)
    integer :: rf_passes_over_two ! rf_passes / 2
    integer :: i, j, m, n, pass, ij   ! Loop counters.
    real    :: p_x(ims:ime,jms:jme)! sqrt(Grid box area).
-   real*8  :: val_j(grid%xp%jtsy:grid%xp%jtey)
-   real*8  :: val_i(grid%xp%itsx:grid%xp%itex)
+   real*8, dimension(grid%xp%jtsy:grid%xp%jtey)  :: val_j, wrk_j
+   real*8, dimension(grid%xp%itsx:grid%xp%itex)  :: val_i, wrk_i
    
    logical, optional, intent(in) :: scaling
 
@@ -150,9 +150,9 @@ time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
          do i = grid%xp%itsx, grid%xp%itex
             val_i(i) = grid%xp%v1x(i,j,m)
          end do
-         do pass = 1, rf_passes_over_two
-            call da_recursive_filter_1d(pass, rf_alpha(m), val_i, n)
-         end do
+!         do pass = 1, rf_passes_over_two
+            call da_recursive_filter_1d_alt(rf_passes_over_two, rf_alpha(m), val_i, n, wrk_i)
+!         end do
          do i = grid%xp%itsx, grid%xp%itex
             grid%xp%v1x(i,j,m) = val_i(i)
          end do
@@ -220,9 +220,9 @@ time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
          do j = grid%xp%jtsy, grid%xp%jtey
             val_j(j) = grid%xp%v1y(i,j,m)
          end do
-         do pass = 1, rf_passes_over_two
-            call da_recursive_filter_1d(pass, rf_alpha(m), val_j, n)
-         end do
+!         do pass = 1, rf_passes_over_two
+            call da_recursive_filter_1d_alt(rf_passes_over_two, rf_alpha(m), val_j, n, wrk_j)
+!         end do
          do j = grid%xp%jtsy, grid%xp%jtey
             grid%xp%v1y(i,j,m) = val_j(j)
          end do
