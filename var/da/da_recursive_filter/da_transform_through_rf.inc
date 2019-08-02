@@ -19,11 +19,17 @@ subroutine da_transform_through_rf(grid,mz, rf_alpha, val,field, scaling)
    real,             intent(inout) :: field(ims:ime,jms:jme,kms:kme) ! Field to be transformed. 
       
    integer :: rf_passes_over_two ! rf_passes / 2
-   integer :: i, j, m, n, pass, ij   ! Loop counters.
+   integer :: i, j, m, ni, nj, ij   ! Loop counters.
+
    real    :: p_x(ims:ime,jms:jme)! sqrt(Grid box area).
-   real*8, dimension(grid%xp%jtsy:grid%xp%jtey)  :: val_j, wrk_j
-   real*8, dimension(grid%xp%itsx:grid%xp%itex)  :: val_i, wrk_i
-   
+
+   integer, parameter :: nix = grid%xp%itex - grid%xp%itsx + 1
+   integer, parameter :: njx = grid%xp%jtex - grid%xp%jtsx + 1
+   integer, parameter :: niy = grid%xp%itey - grid%xp%itsy + 1
+   integer, parameter :: njy = grid%xp%jtey - grid%xp%jtsy + 1
+   real*8  :: val_j(njy,niy)
+   real*8  :: val_i(nix,njx)
+  
    logical, optional, intent(in) :: scaling
 
    character(len=10) :: this_time
@@ -142,21 +148,16 @@ time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
 
    ! [2.2] Apply 1D filter in x direction:
 
-   n = grid%xp%itex - grid%xp%itsx + 1
    !$OMP PARALLEL DO &
-   !$OMP PRIVATE ( m, j, pass, val_i, i )
+   !$OMP PRIVATE ( m, val_i )
    do m = grid%xp%ktsx, min(grid%xp%ktex,mz)
-      do j = grid%xp%jtsx, grid%xp%jtex
-         do i = grid%xp%itsx, grid%xp%itex
-            val_i(i) = grid%xp%v1x(i,j,m)
-         end do
-!         do pass = 1, rf_passes_over_two
-            call da_recursive_filter_1d_alt(rf_passes_over_two, rf_alpha(m), val_i, n, wrk_i)
-!         end do
-         do i = grid%xp%itsx, grid%xp%itex
-            grid%xp%v1x(i,j,m) = val_i(i)
-         end do
-      end do
+
+      val_i = grid%xp%v1x(grid%xp%itsx:grid%xp%itex, grid%xp%jtsx:grid%xp%jtex, m)
+
+      call da_recursive_filter_vec_1d(rf_passes_over_two, rf_alpha(m), val_i, nix, njx)
+
+      grid%xp%v1x(grid%xp%itsx:grid%xp%itex, grid%xp%jtsx:grid%xp%jtex, m) = val_i
+
    end do
    !$OMP END PARALLEL DO
 
@@ -212,21 +213,16 @@ time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
 
    ! [3.2] Apply 1D filter in y direction:
 
-   n = grid%xp%jtey - grid%xp%jtsy + 1
    !$OMP PARALLEL DO &
-   !$OMP PRIVATE ( m, i, pass, val_j, j )
+   !$OMP PRIVATE ( m, val_j )
    do m = grid%xp%ktsy, min(grid%xp%ktey,mz)
-      do i = grid%xp%itsy, grid%xp%itey
-         do j = grid%xp%jtsy, grid%xp%jtey
-            val_j(j) = grid%xp%v1y(i,j,m)
-         end do
-!         do pass = 1, rf_passes_over_two
-            call da_recursive_filter_1d_alt(rf_passes_over_two, rf_alpha(m), val_j, n, wrk_j)
-!         end do
-         do j = grid%xp%jtsy, grid%xp%jtey
-            grid%xp%v1y(i,j,m) = val_j(j)
-         end do
-      end do
+
+      val_j = TRANSPOSE(grid%xp%v1y(grid%xp%itsy:grid%xp%itey, grid%xp%jtsy:grid%xp%jtey, m))
+
+      call da_recursive_filter_vec_1d(rf_passes_over_two, rf_alpha(m), val_j, njy, niy)
+
+      grid%xp%v1y(grid%xp%itsy:grid%xp%itey, grid%xp%jtsy:grid%xp%jtey, m) = TRANSPOSE(val_j)
+
    end do
    !$OMP END PARALLEL DO
 
