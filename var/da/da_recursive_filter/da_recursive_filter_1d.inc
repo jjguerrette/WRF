@@ -10,7 +10,7 @@ subroutine da_recursive_filter_1d(pass, alpha, field, n)
 
    integer, intent(in)    :: pass           ! Current pass of filter.
    real*8,  intent(in)    :: alpha          ! Alpha coefficient for RF.
-   real*8,  intent(inout) :: field(1:n)     ! Array to be filtered.
+   real*8,  intent(inout) :: field(:)       ! Array to be filtered.
    integer, intent(in)    :: n              ! Size of field array.
 
    integer :: j              ! Loop counter.
@@ -86,7 +86,7 @@ subroutine da_recursive_filter_vec_1d(npass, alpha, field2d, n1, n2)
 
    integer, intent(in)    :: npass          ! Number of filter passes.
    real*8,  intent(in)    :: alpha          ! Alpha coefficient for RF.
-   real*8,  intent(inout) :: field2d(n1,n2)     ! Array to be filtered.
+   real*8,  intent(inout) :: field2d(n1,n2) ! Array to be filtered.
    integer, intent(in)    :: n1,n2              ! Size of field2d array.
 
    integer :: i1, i2, pass   ! Loop counters.
