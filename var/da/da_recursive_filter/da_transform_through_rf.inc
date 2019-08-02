@@ -148,8 +148,6 @@ time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
 
    ! [2.2] Apply 1D filter in x direction:
 
-   !$OMP PARALLEL DO &
-   !$OMP PRIVATE ( m, val_i )
    do m = grid%xp%ktsx, min(grid%xp%ktex,mz)
       val_i = grid%xp%v1x(grid%xp%itsx:grid%xp%itex, grid%xp%jtsx:grid%xp%jtex, m)
 
@@ -157,7 +155,6 @@ time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
 
       grid%xp%v1x(grid%xp%itsx:grid%xp%itex, grid%xp%jtsx:grid%xp%jtex, m) = val_i
    end do
-   !$OMP END PARALLEL DO
 
 call date_and_time(date=this_date, time=this_time)
 read(this_date(7:8),'(I2.2)') dy_f
@@ -211,8 +208,6 @@ time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
 
    ! [3.2] Apply 1D filter in y direction:
 
-   !$OMP PARALLEL DO &
-   !$OMP PRIVATE ( m, val_j )
    do m = grid%xp%ktsy, min(grid%xp%ktey,mz)
       ! Transpose to a column-major array with respect to y-index
       val_j = TRANSPOSE(grid%xp%v1y(grid%xp%itsy:grid%xp%itey, grid%xp%jtsy:grid%xp%jtey, m))
@@ -221,7 +216,6 @@ time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
 
       grid%xp%v1y(grid%xp%itsy:grid%xp%itey, grid%xp%jtsy:grid%xp%jtey, m) = TRANSPOSE(val_j)
    end do
-   !$OMP END PARALLEL DO
 
 call date_and_time(date=this_date, time=this_time)
 read(this_date(7:8),'(I2.2)') dy_f

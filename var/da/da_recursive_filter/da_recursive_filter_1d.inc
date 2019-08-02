@@ -43,7 +43,7 @@ subroutine da_recursive_filter_1d(pass, alpha, field, n)
       b(1) = one_alpha * (a(1) - alpha**3 * a(2)) / (1.0 - alpha**2)**2
    end if
 
-   ! [2.2] Perform pass left to right:
+   ! [2.2] Perform pass right to left:
 
    do j = 2, n
       b(j) = alpha * b(j-1) + one_alpha * a(j)
@@ -91,7 +91,9 @@ subroutine da_recursive_filter_vec_1d(npass, alpha, field2d, n1, n2)
 
    integer :: i1, i2, pass   ! Loop counters.
    real    :: one_alpha      ! 1 - alpha.
-   real    :: field_lr(n1)   ! Field after left-right pass.
+   real    :: a(n1)         ! Input field.
+   real    :: b(n1)         ! Field after left-right pass.
+   real    :: c(n1)         ! Field after right-left pass.
 
    if (trace_use_dull) call da_trace_entry("da_recursive_filter_vec_1d")
 
@@ -102,7 +104,12 @@ subroutine da_recursive_filter_vec_1d(npass, alpha, field2d, n1, n2)
    one_alpha = 1.0 - alpha
 
    do pass = 1, npass
+
+      !$OMP PARALLEL DO &
+      !$OMP PRIVATE ( i1, i2, a, b, c )
       do i2 = 1, n2
+
+         a = field2d(:,i2)
 
          !-------------------------------------------------------------------------
          ! [2.0] Perform right-moving filter:
@@ -111,17 +118,17 @@ subroutine da_recursive_filter_vec_1d(npass, alpha, field2d, n1, n2)
          ! use turning conditions as in the appendix of Hayden & Purser (1995):
 
          if (pass == 1) then
-            field_lr(1) = one_alpha * field2d(1,i2)
+            b(1) = one_alpha * a(1)
          else if (pass == 2) then
-            field_lr(1) = field2d(1,i2) / (1.0 + alpha)
+            b(1) = a(1) / (1.0 + alpha)
          else
-            field_lr(1) = one_alpha * (field2d(1,i2) - alpha**3 * field2d(2,i2)) / (1.0 - alpha**2)**2
+            b(1) = one_alpha * (a(1) - alpha**3 * a(2)) / (1.0 - alpha**2)**2
          end if
 
          ! [2.2] Perform pass left to right:
 
          do i1 = 2, n1
-            field_lr(i1) = alpha * field_lr(i1-1) + one_alpha * field2d(i1,i2)
+            b(i1) = alpha * b(i1-1) + one_alpha * a(i1)
          end do
 
          !-------------------------------------------------------------------------
@@ -131,18 +138,22 @@ subroutine da_recursive_filter_vec_1d(npass, alpha, field2d, n1, n2)
          ! use turning conditions as in the appendix of Hayden & Purser (1995):
 
          if (pass == 1) then
-            field2d(n1,i2) = field_lr(n1) / (1.0 + alpha)
+            c(n1) = b(n1) / (1.0 + alpha)
          else
-            field2d(n1,i2) = one_alpha * (field_lr(n1) - alpha**3 * field_lr(n1-1)) / (1.0 - alpha**2)**2
+            c(n1) = one_alpha * (b(n1) - alpha**3 * b(n1-1)) / (1.0 - alpha**2)**2
          end if
 
-         ! [3.2] Perform pass left to right:
+         ! [3.2] Perform pass right to left:
 
          do i1 = n1-1, 1, -1
-            field2d(i1,i2) = alpha * field2d(i1+1,i2) + one_alpha * field_lr(i1)
+            c(i1) = alpha * c(i1+1) + one_alpha * b(i1)
          end do
 
+         field2d(:,i2) = c
+
       end do !i2 loop
+      !$OMP END PARALLEL DO
+
    end do !pass loop
 
    if (trace_use_dull) call da_trace_exit("da_recursive_filter_vec_1d")

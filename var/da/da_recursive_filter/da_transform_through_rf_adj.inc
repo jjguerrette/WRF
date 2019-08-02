@@ -98,8 +98,8 @@ subroutine da_transform_through_rf_adj(grid, mz,rf_alpha, val, field, scaling)
 
    !  [3.2] Apply 1D filter in y direction:
 
-   !$OMP PARALLEL DO &
-   !$OMP PRIVATE (m, val_j)
+!   !$OMP PARALLEL DO &
+!   !$OMP PRIVATE (m, val_j)
    do m = grid%xp%ktsy, min(grid%xp%ktey, mz)
       ! Transpose to a column-major array with respect to y-index
       val_j = TRANSPOSE(grid%xp%v1y(grid%xp%itsy:grid%xp%itey, grid%xp%jtsy:grid%xp%jtey, m))
@@ -108,7 +108,7 @@ subroutine da_transform_through_rf_adj(grid, mz,rf_alpha, val, field, scaling)
 
       grid%xp%v1y(grid%xp%itsy:grid%xp%itey, grid%xp%jtsy:grid%xp%jtey, m) = TRANSPOSE(val_j)
    end do
-   !$OMP END PARALLEL DO
+!   !$OMP END PARALLEL DO
 
    ! [3.1] Apply (i',j,k' -> i,j',k') (grid%xp%v1y -> grid%xp%v1x)
    ! convert from y-stripe to x-stripe
@@ -121,8 +121,8 @@ subroutine da_transform_through_rf_adj(grid, mz,rf_alpha, val, field, scaling)
 
    ! [2.2] Apply 1D filter in x direction:
 
-   !$OMP PARALLEL DO &
-   !$OMP PRIVATE ( m, val_i)
+!   !$OMP PARALLEL DO &
+!   !$OMP PRIVATE ( m, val_i)
    do m = grid%xp%ktsx, min(grid%xp%ktex,mz)
       val_i = grid%xp%v1x(grid%xp%itsx:grid%xp%itex, grid%xp%jtsx:grid%xp%jtex, m)
 
@@ -130,7 +130,7 @@ subroutine da_transform_through_rf_adj(grid, mz,rf_alpha, val, field, scaling)
 
       grid%xp%v1x(grid%xp%itsx:grid%xp%itex, grid%xp%jtsx:grid%xp%jtex, m) = val_i
    end do
-   !$OMP END PARALLEL DO
+!   !$OMP END PARALLEL DO
 
    ! [2.1] Apply (i,j',k' -> i',j',k) (grid%xp%v1x -> grid%xp%v1z)
    ! convert from x-stripe to vertical column
