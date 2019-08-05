@@ -32,13 +32,6 @@ subroutine da_transform_vtoy(cv_size, be, ep, cv, iv, vp, vv, xbx, &
    real, dimension(:,:,:), allocatable :: hr_rainc, hr_rainnc
    real, dimension(:,:,:), allocatable :: g_rainc, g_rainnc
 
-   character(len=10) :: this_time
-   character(len=8) :: this_date
-
-   integer :: dy_i, hr_i, mn_i, sc_i, msc_i, &
-              dy_f, hr_f, mn_f, sc_f, msc_f
-   real    :: time_sec_i, time_sec_f
-
    if (trace_use) call da_trace_entry("da_transform_vtoy")
 
    if (var4d) then
@@ -167,28 +160,7 @@ subroutine da_transform_vtoy(cv_size, be, ep, cv, iv, vp, vv, xbx, &
 
       ! as of V3.9, vp%alpha is not included in the vptox (called by vtox) calculation
       ! here grid%xa contains only the static increment
-
-call date_and_time(date=this_date, time=this_time)
-read(this_date(7:8),'(I2.2)') dy_i
-read(this_time(1:2),'(I2.2)') hr_i
-read(this_time(3:4),'(I2.2)') mn_i
-read(this_time(5:6),'(I2.2)') sc_i
-read(this_time(8:10),'(I3.3)') msc_i
-time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
-
       call da_transform_vtox(grid, cv_size, xbx, be, ep, cv, vv, vp)
-
-call date_and_time(date=this_date, time=this_time)
-read(this_date(7:8),'(I2.2)') dy_f
-read(this_time(1:2),'(I2.2)') hr_f
-read(this_time(3:4),'(I2.2)') mn_f
-read(this_time(5:6),'(I2.2)') sc_f
-read(this_time(8:10),'(I3.3)') msc_f
-time_sec_f = real( ( ( hr_f * 60 + mn_f ) * 60 + sc_f) * 1000 + msc_f ) / 1000.0
-
-write(unit=message(1),fmt='(A,F12.4,A)') &
-   '   da_transform_vtox duration: ', time_sec_f - time_sec_i + real(dy_f - dy_i) * 86400.0, ' sec.'
-call da_message(message(1:1))
 
       if ( use_4denvar ) then
          num_subtwindow = num_fgat_time
@@ -203,78 +175,14 @@ call da_message(message(1:1))
 
       do nobwin = num_subtwindow, 1 , -1
          if (be % ne > 0 .and. alphacv_method == alphacv_method_xa) then
-call date_and_time(date=this_date, time=this_time)
-read(this_date(7:8),'(I2.2)') dy_i
-read(this_time(1:2),'(I2.2)') hr_i
-read(this_time(3:4),'(I2.2)') mn_i
-read(this_time(5:6),'(I2.2)') sc_i
-read(this_time(8:10),'(I3.3)') msc_i
-time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
-
             call da_transform_vpatox(grid, be, ep, vp, nobwin)
-
-call date_and_time(date=this_date, time=this_time)
-read(this_date(7:8),'(I2.2)') dy_f
-read(this_time(1:2),'(I2.2)') hr_f
-read(this_time(3:4),'(I2.2)') mn_f
-read(this_time(5:6),'(I2.2)') sc_f
-read(this_time(8:10),'(I3.3)') msc_f
-time_sec_f = real( ( ( hr_f * 60 + mn_f ) * 60 + sc_f) * 1000 + msc_f ) / 1000.0
-
-write(unit=message(1),fmt='(A,F12.4,A)') &
-   '   da_transform_vpatox duration: ', time_sec_f - time_sec_i + real(dy_f - dy_i) * 86400.0, ' sec.'
-call da_message(message(1:1))
-
-call date_and_time(date=this_date, time=this_time)
-read(this_date(7:8),'(I2.2)') dy_i
-read(this_time(1:2),'(I2.2)') hr_i
-read(this_time(3:4),'(I2.2)') mn_i
-read(this_time(5:6),'(I2.2)') sc_i
-read(this_time(8:10),'(I3.3)') msc_i
-time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
-
             if ( num_subtwindow > 1 ) then
                !reset grid%xa = grid%xa_static
                call da_copy_xa(grid%xa, grid%xa_static)
             end if
             call da_add_xa(grid%xa, grid%xa_ens) !grid%xa = grid%xa + xa_ens
-
-call date_and_time(date=this_date, time=this_time)
-read(this_date(7:8),'(I2.2)') dy_f
-read(this_time(1:2),'(I2.2)') hr_f
-read(this_time(3:4),'(I2.2)') mn_f
-read(this_time(5:6),'(I2.2)') sc_f
-read(this_time(8:10),'(I3.3)') msc_f
-time_sec_f = real( ( ( hr_f * 60 + mn_f ) * 60 + sc_f) * 1000 + msc_f ) / 1000.0
-
-write(unit=message(1),fmt='(A,F12.4,A)') &
-   '   da_add_xa duration: ', time_sec_f - time_sec_i + real(dy_f - dy_i) * 86400.0, ' sec.'
-call da_message(message(1:1))
-
          end if
-
-call date_and_time(date=this_date, time=this_time)
-read(this_date(7:8),'(I2.2)') dy_i
-read(this_time(1:2),'(I2.2)') hr_i
-read(this_time(3:4),'(I2.2)') mn_i
-read(this_time(5:6),'(I2.2)') sc_i
-read(this_time(8:10),'(I3.3)') msc_i
-time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
-
          call da_transform_xtoxa(grid)
-
-call date_and_time(date=this_date, time=this_time)
-read(this_date(7:8),'(I2.2)') dy_f
-read(this_time(1:2),'(I2.2)') hr_f
-read(this_time(3:4),'(I2.2)') mn_f
-read(this_time(5:6),'(I2.2)') sc_f
-read(this_time(8:10),'(I3.3)') msc_f
-time_sec_f = real( ( ( hr_f * 60 + mn_f ) * 60 + sc_f) * 1000 + msc_f ) / 1000.0
-
-write(unit=message(1),fmt='(A,F12.4,A)') &
-   '   da_transform_xtoxa duration: ', time_sec_f - time_sec_i + real(dy_f - dy_i) * 86400.0, ' sec.'
-call da_message(message(1:1))
-
          iv%time = nobwin
          if ( use_4denvar ) then
             iv%info(:)%n1 = iv%info(:)%plocal(iv%time-1) + 1
@@ -291,29 +199,7 @@ call da_message(message(1:1))
                iv%instid(:)%info%n2 = iv%instid(:)%num_rad
             end if
          end if !4denvar
-
-call date_and_time(date=this_date, time=this_time)
-read(this_date(7:8),'(I2.2)') dy_i
-read(this_time(1:2),'(I2.2)') hr_i
-read(this_time(3:4),'(I2.2)') mn_i
-read(this_time(5:6),'(I2.2)') sc_i
-read(this_time(8:10),'(I3.3)') msc_i
-time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
-
          call da_transform_xtoy(cv_size, cv, grid, iv, y)
-
-call date_and_time(date=this_date, time=this_time)
-read(this_date(7:8),'(I2.2)') dy_f
-read(this_time(1:2),'(I2.2)') hr_f
-read(this_time(3:4),'(I2.2)') mn_f
-read(this_time(5:6),'(I2.2)') sc_f
-read(this_time(8:10),'(I3.3)') msc_f
-time_sec_f = real( ( ( hr_f * 60 + mn_f ) * 60 + sc_f) * 1000 + msc_f ) / 1000.0
-
-write(unit=message(1),fmt='(A,F12.4,A)') &
-   '   da_transform_xtoy duration: ', time_sec_f - time_sec_i + real(dy_f - dy_i) * 86400.0, ' sec.'
-call da_message(message(1:1))
-
       end do
 
    end if ! var4d
@@ -321,31 +207,9 @@ call da_message(message(1:1))
    !--------------------------------------------------------------
    ! TL of Variational Bias Correction
    !--------------------------------------------------------------
-
-call date_and_time(date=this_date, time=this_time)
-read(this_date(7:8),'(I2.2)') dy_i
-read(this_time(1:2),'(I2.2)') hr_i
-read(this_time(3:4),'(I2.2)') mn_i
-read(this_time(5:6),'(I2.2)') sc_i
-read(this_time(8:10),'(I3.3)') msc_i
-time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
-
 #if defined(RTTOV) || defined(CRTM)
    if (use_varbc) call da_varbc_tl(cv_size, cv, iv, y)
 #endif
-
-call date_and_time(date=this_date, time=this_time)
-read(this_date(7:8),'(I2.2)') dy_f
-read(this_time(1:2),'(I2.2)') hr_f
-read(this_time(3:4),'(I2.2)') mn_f
-read(this_time(5:6),'(I2.2)') sc_f
-read(this_time(8:10),'(I3.3)') msc_f
-time_sec_f = real( ( ( hr_f * 60 + mn_f ) * 60 + sc_f) * 1000 + msc_f ) / 1000.0
-
-write(unit=message(1),fmt='(A,F12.4,A)') &
-   '   da_varbc_tl duration: ', time_sec_f - time_sec_i + real(dy_f - dy_i) * 86400.0, ' sec.'
-call da_message(message(1:1))
-
    if (trace_use) call da_trace_exit("da_transform_vtoy")
 
 end subroutine da_transform_vtoy

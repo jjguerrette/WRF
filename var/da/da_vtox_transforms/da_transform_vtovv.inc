@@ -19,24 +19,9 @@ subroutine da_transform_vtovv(grid, cv_size, be, cv, vv)
 
    logical :: scaling
 
-   character(len=10) :: this_time
-   character(len=8) :: this_date
-
-   integer :: dy_i, hr_i, mn_i, sc_i, msc_i, &
-              dy_f, hr_f, mn_f, sc_f, msc_f
-   real    :: time_sec_i, time_sec_f
-
    scaling = .false.
 
    if (trace_use) call da_trace_entry("da_transform_vtovv")
-
-call date_and_time(date=this_date, time=this_time)
-read(this_date(7:8),'(I2.2)') dy_i
-read(this_time(1:2),'(I2.2)') hr_i
-read(this_time(3:4),'(I2.2)') mn_i
-read(this_time(5:6),'(I2.2)') sc_i
-read(this_time(8:10),'(I3.3)') msc_i
-time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
 
    if( use_rf )then
       !-------------------------------------------------------------------------
@@ -46,28 +31,9 @@ time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
    endif
    if( .not. use_rf .or. do_normalize ) s(1:2)=1
 
-call date_and_time(date=this_date, time=this_time)
-read(this_date(7:8),'(I2.2)') dy_f
-read(this_time(1:2),'(I2.2)') hr_f
-read(this_time(3:4),'(I2.2)') mn_f
-read(this_time(5:6),'(I2.2)') sc_f
-read(this_time(8:10),'(I3.3)') msc_f
-time_sec_f = real( ( ( hr_f * 60 + mn_f ) * 60 + sc_f) * 1000 + msc_f ) / 1000.0
-
-write(unit=message(1),fmt='(A,F12.4,A)') &
-   '   inside da_transform_vtovv: da_cv_to_vv duration: ', time_sec_f - time_sec_i + real(dy_f - dy_i) * 86400.0, ' sec.'
-call da_message(message(1:1))
-
    !-------------------------------------------------------------------------
    ! [2.0] Perform VToVV Transform:
    !-------------------------------------------------------------------------
-call date_and_time(date=this_date, time=this_time)
-read(this_date(7:8),'(I2.2)') dy_i
-read(this_time(1:2),'(I2.2)') hr_i
-read(this_time(3:4),'(I2.2)') mn_i
-read(this_time(5:6),'(I2.2)') sc_i
-read(this_time(8:10),'(I3.3)') msc_i
-time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
 
    ! [2.1] Transform 1st control variable:
 
@@ -148,18 +114,6 @@ time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
    endif
    if( do_normalize )call da_transform_rescale(mz,be%sd(:,:,s(1):s(3)),vv%v5)
    s(1)=s(3)+1
-
-call date_and_time(date=this_date, time=this_time)
-read(this_date(7:8),'(I2.2)') dy_f
-read(this_time(1:2),'(I2.2)') hr_f
-read(this_time(3:4),'(I2.2)') mn_f
-read(this_time(5:6),'(I2.2)') sc_f
-read(this_time(8:10),'(I3.3)') msc_f
-time_sec_f = real( ( ( hr_f * 60 + mn_f ) * 60 + sc_f) * 1000 + msc_f ) / 1000.0
-
-write(unit=message(1),fmt='(A,F12.4,A)') &
-   '   inside da_transform_vtovv: da_transform_through_rf (v1-v5) duration: ', time_sec_f - time_sec_i + real(dy_f - dy_i) * 86400.0, ' sec.'
-call da_message(message(1:1))
 
    if ( .not. use_rf .and. cloud_cv_options > 0 ) then
       call da_error(__FILE__,__LINE__,(/"no da_transform_through_wavelet for v6-v11"/))
@@ -250,33 +204,12 @@ call da_message(message(1:1))
       mz = be % alpha % mz
       if( use_rf )then
          do n = 1, ne
-call date_and_time(date=this_date, time=this_time)
-read(this_date(7:8),'(I2.2)') dy_i
-read(this_time(1:2),'(I2.2)') hr_i
-read(this_time(3:4),'(I2.2)') mn_i
-read(this_time(5:6),'(I2.2)') sc_i
-read(this_time(8:10),'(I3.3)') msc_i
-time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
-
             if ( anal_type_hybrid_dual_res ) then
                call da_transform_through_rf_dual_res(grid%intermediate_grid, mz, be % alpha % rf_alpha, & 
                              be % alpha % val, vv % alpha(:,:,:,n) )
             else
                call da_transform_through_rf(grid, mz, be % alpha % rf_alpha, be % alpha % val, vv % alpha(:,:,:,n) )
             endif
-
-call date_and_time(date=this_date, time=this_time)
-read(this_date(7:8),'(I2.2)') dy_f
-read(this_time(1:2),'(I2.2)') hr_f
-read(this_time(3:4),'(I2.2)') mn_f
-read(this_time(5:6),'(I2.2)') sc_f
-read(this_time(8:10),'(I3.3)') msc_f
-time_sec_f = real( ( ( hr_f * 60 + mn_f ) * 60 + sc_f) * 1000 + msc_f ) / 1000.0
-
-write(unit=message(1),fmt='(A,I0,A,F12.4,A)') &
-   '   inside da_transform_vtovv: da_transform_through_rf (n=',n,') duration: ', time_sec_f - time_sec_i + real(dy_f - dy_i) * 86400.0, ' sec.'
-call da_message(message(1:1))
-
          end do
       else
          do n = 1, ne

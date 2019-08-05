@@ -21,14 +21,14 @@ real function da_dot_cv(cv_size, x, y, grid, mzs, nmzs, jp_start, jp_end)
    integer, optional,intent(in) :: jp_start, jp_end
 
    logical       :: lvarbc
-   real          :: xx(cv_size), yy(cv_size)         ! Temporary vectors.
+   real, pointer :: xx(:), yy(:)                     ! Temporary vectors.
    real, pointer :: xg(:), yg(:)                     ! Serial data arrays.
    real          :: dtemp1(1), dtmp                  ! Temporary.
 
    if (trace_use) call da_trace_entry("da_dot_cv")
 
-!   allocate(xx(1:cv_size))
-!   allocate(yy(1:cv_size))
+   allocate(xx(1:cv_size))
+   allocate(yy(1:cv_size))
    xx = x
    yy = y
 
@@ -82,7 +82,7 @@ real function da_dot_cv(cv_size, x, y, grid, mzs, nmzs, jp_start, jp_end)
 
    end if
   
-!   deallocate(xx,yy)
+   deallocate(xx,yy)
 
    da_dot_cv = dtemp1(1)
 
