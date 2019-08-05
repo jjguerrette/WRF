@@ -19,11 +19,13 @@ subroutine da_transform_through_rf_adj_dual_res(grid, mz,rf_alpha, val, field, s
    real*8,           intent(in)    :: val(jds_int:jde_int,mz)   ! Error standard deviation.
    real,             intent(inout) :: field(ims_int:ime_int,jms_int:jme_int,kms_int:kme_int) ! Field to be transformed.
       
-   integer :: rf_passes_over_two    ! rf_passes / 2
-   integer :: i, j, m, n, pass, ij  ! Loop counters.
-   real    :: p_x(ims_int:ime_int,jms_int:jme_int)  ! sqrt(Grid box area).
-   real*8  :: val_j(grid%xp%jtsy:grid%xp%jtey)
-   real*8  :: val_i(grid%xp%itsx:grid%xp%itex)
+   integer :: rf_passes_over_two   ! rf_passes / 2
+   integer :: i, j, m, ij          ! Loop counters.
+   real    :: p_x(ims_int:ime_int,jms_int:jme_int) ! sqrt(Grid box area).
+   integer :: nix, njx, niy, njy   ! # grid points in x/y decomposed tile
+
+   real*8  :: val_j(grid%xp%jtsy:grid%xp%jtey, grid%xp%itsy:grid%xp%itey)
+   real*8  :: val_i(grid%xp%itsx:grid%xp%itex, grid%xp%jtsx:grid%xp%jtex)
 
    logical, optional, intent(in) :: scaling
 
@@ -34,6 +36,11 @@ subroutine da_transform_through_rf_adj_dual_res(grid, mz,rf_alpha, val, field, s
    if (trace_use_dull) call da_trace_entry("da_transform_through_rf_adj")
 
    rf_passes_over_two = rf_passes / 2
+
+   nix = grid%xp%itex - grid%xp%itsx + 1
+   njx = grid%xp%jtex - grid%xp%jtsx + 1
+   niy = grid%xp%itey - grid%xp%itsy + 1
+   njy = grid%xp%jtey - grid%xp%jtsy + 1
 
    ! [1.1] Define inner product (square root of grid box area):
    !$OMP PARALLEL DO &
@@ -93,23 +100,14 @@ subroutine da_transform_through_rf_adj_dual_res(grid, mz,rf_alpha, val, field, s
 
    !  [3.2] Apply 1D filter in y direction:
 
-   n=grid%xp%jtey-grid%xp%jtsy+1
-   !$OMP PARALLEL DO &
-   !$OMP PRIVATE (m, i, val_j, pass, j)
    do m = grid%xp%ktsy, min(grid%xp%ktey, mz)
-      do i = grid%xp%itsy, grid%xp%itey
-         do j = grid%xp%jtsy, grid%xp%jtey
-            val_j(j) = grid%xp%v1y(i,j,m)
-         end do
-         do pass = rf_passes_over_two, 1, -1
-            call da_recursive_filter_1d_adj(pass, rf_alpha(m), val_j, n)
-         end do
-         do j = grid%xp%jtsy, grid%xp%jtey
-            grid%xp%v1y(i,j,m) = val_j(j)
-         end do
-      end do
+      ! Transpose to a column-major array with respect to y-index
+      val_j = TRANSPOSE(grid%xp%v1y(grid%xp%itsy:grid%xp%itey, grid%xp%jtsy:grid%xp%jtey, m))
+
+      call da_recursive_filter_1d_adj(rf_passes_over_two, rf_alpha(m), val_j, njy, niy)
+
+      grid%xp%v1y(grid%xp%itsy:grid%xp%itey, grid%xp%jtsy:grid%xp%jtey, m) = TRANSPOSE(val_j)
    end do
-   !$OMP END PARALLEL DO
 
    ! [3.1] Apply (i',j,k' -> i,j',k') (grid%xp%v1y -> grid%xp%v1x)
    ! convert from y-stripe to x-stripe
@@ -122,24 +120,13 @@ subroutine da_transform_through_rf_adj_dual_res(grid, mz,rf_alpha, val, field, s
 
    ! [2.2] Apply 1D filter in x direction:
 
-   n = grid%xp%itex-grid%xp%itsx+1
-
-   !$OMP PARALLEL DO &
-   !$OMP PRIVATE ( m, j, pass, i, val_i)
    do m = grid%xp%ktsx, min(grid%xp%ktex,mz)
-      do j = grid%xp%jtsx, grid%xp%jtex
-         do i = grid%xp%itsx, grid%xp%itex
-            val_i(i) = grid%xp%v1x(i,j,m)
-         end do
-         do pass = rf_passes_over_two, 1, -1
-            call da_recursive_filter_1d_adj(pass, rf_alpha(m), val_i, n)
-         end do
-         do i = grid%xp%itsx, grid%xp%itex
-            grid%xp%v1x(i,j,m) = val_i(i) 
-         end do
-      end do
+      val_i = grid%xp%v1x(grid%xp%itsx:grid%xp%itex, grid%xp%jtsx:grid%xp%jtex, m)
+
+      call da_recursive_filter_1d_adj(rf_passes_over_two, rf_alpha(m), val_i, nix, njx)
+
+      grid%xp%v1x(grid%xp%itsx:grid%xp%itex, grid%xp%jtsx:grid%xp%jtex, m) = val_i
    end do
-   !$OMP END PARALLEL DO
 
    ! [2.1] Apply (i,j',k' -> i',j',k) (grid%xp%v1x -> grid%xp%v1z)
    ! convert from x-stripe to vertical column

@@ -22,8 +22,8 @@ subroutine da_calculate_rf_factors (rf_lengthscale, rf_alpha, rf_scale_factor)
       
    real               :: rf_e                   ! RF E factor.      
 
-   real*8, dimension(-n:n) :: field_in, field_out  ! Working field.
-   ! real, dimension(-n:n) :: field_out1  ! Working field.
+   real*8, dimension(-n:n,1) :: field_in, field_out  ! Working field.
+   ! real, dimension(-n:n,1) :: field_out1  ! Working field.
 
    if (trace_use_dull) call da_trace_entry("da_calculate_rf_factors")
 
@@ -52,32 +52,25 @@ subroutine da_calculate_rf_factors (rf_lengthscale, rf_alpha, rf_scale_factor)
       ! For rf_passes=2 (SOAR) = 4*rf_lengthscale.
       ! For rf_passes=infinity (Gaussian) = sqrt(8*pi)*rf_lengthscale.
 
-      field_in(-n:n) = 0.0
-      field_in(0) = 1.0
-      field_out(-n:n) = field_in(-n:n)
+      field_in(-n:n,1) = 0.0
+      field_in(0,1) = 1.0
+      field_out(-n:n,1) = field_in(-n:n,1)
 
-      do pass = 1, rf_passes / 2
-         call da_recursive_filter_1d_adj(pass, rf_alpha(k), field_out, 2*n+1)
-      end do
+      call da_recursive_filter_1d_adj(rf_passes / 2, rf_alpha(k), field_out, 2*n+1, 1)
+      call da_recursive_filter_1d(rf_passes / 2, rf_alpha(k), field_out, 2*n+1, 1)
 
-      do pass = 1, rf_passes / 2
-         call da_recursive_filter_1d(pass, rf_alpha(k), field_out, 2*n+1)
-      end do
-
-      rf_scale_factor(k) = 1.0 / field_out(0)
+      rf_scale_factor(k) = 1.0 / field_out(0,1)
 
       ! Uncomment the following to test equivalence of UU^T and RF:
       ! write(unit=stdout,fmt='(A,f15.5)') &
-      !    ' RF Scaling Factor = ', 1.0 / field_out(0)
-      ! field_out1(-n:n) = field_in(-n:n)
-      ! do pass = 1, rf_passes
-      !    call da_recursive_filter_1d(pass, rf_alpha(k), field_out1, 2*n+1)
-      ! end do
+      !    ' RF Scaling Factor = ', 1.0 / field_out(0,1)
+      ! field_out1(-n:n,1) = field_in(-n:n,1)
+      ! call da_recursive_filter_1d(rf_passes, rf_alpha(k), field_out1, 2*n+1, 1)
 
       ! do nn = -n, n
       !    write(unit=stdout,fmt='(2i5,4f12.5)')k, nn, field_in(nn), &
-      !                             field_out(nn) / field_out(0), &
-      !                             field_out1(nn) / field_out1(0), &
+      !                             field_out(nn,1) / field_out(0,1), &
+      !                             field_out1(nn,1) / field_out1(0,1), &
       !                             exp(-0.125*(real(nn)/rf_lengthscale(k))**2)
       ! end do
 

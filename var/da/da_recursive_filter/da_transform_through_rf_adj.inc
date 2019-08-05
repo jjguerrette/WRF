@@ -104,7 +104,7 @@ subroutine da_transform_through_rf_adj(grid, mz,rf_alpha, val, field, scaling)
       ! Transpose to a column-major array with respect to y-index
       val_j = TRANSPOSE(grid%xp%v1y(grid%xp%itsy:grid%xp%itey, grid%xp%jtsy:grid%xp%jtey, m))
 
-      call da_recursive_filter_vec_1d_adj(rf_passes_over_two, rf_alpha(m), val_j, njy, niy)
+      call da_recursive_filter_1d_adj(rf_passes_over_two, rf_alpha(m), val_j, njy, niy)
 
       grid%xp%v1y(grid%xp%itsy:grid%xp%itey, grid%xp%jtsy:grid%xp%jtey, m) = TRANSPOSE(val_j)
    end do
@@ -126,7 +126,7 @@ subroutine da_transform_through_rf_adj(grid, mz,rf_alpha, val, field, scaling)
    do m = grid%xp%ktsx, min(grid%xp%ktex,mz)
       val_i = grid%xp%v1x(grid%xp%itsx:grid%xp%itex, grid%xp%jtsx:grid%xp%jtex, m)
 
-      call da_recursive_filter_vec_1d_adj(rf_passes_over_two, rf_alpha(m), val_i, nix, njx)
+      call da_recursive_filter_1d_adj(rf_passes_over_two, rf_alpha(m), val_i, nix, njx)
 
       grid%xp%v1x(grid%xp%itsx:grid%xp%itex, grid%xp%jtsx:grid%xp%jtex, m) = val_i
    end do

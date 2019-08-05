@@ -151,7 +151,7 @@ time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
    do m = grid%xp%ktsx, min(grid%xp%ktex,mz)
       val_i = grid%xp%v1x(grid%xp%itsx:grid%xp%itex, grid%xp%jtsx:grid%xp%jtex, m)
 
-      call da_recursive_filter_vec_1d(rf_passes_over_two, rf_alpha(m), val_i, nix, njx)
+      call da_recursive_filter_1d(rf_passes_over_two, rf_alpha(m), val_i, nix, njx)
 
       grid%xp%v1x(grid%xp%itsx:grid%xp%itex, grid%xp%jtsx:grid%xp%jtex, m) = val_i
    end do
@@ -212,7 +212,7 @@ time_sec_i = real( ( ( hr_i * 60 + mn_i ) * 60 + sc_i) * 1000 + msc_i ) / 1000.0
       ! Transpose to a column-major array with respect to y-index
       val_j = TRANSPOSE(grid%xp%v1y(grid%xp%itsy:grid%xp%itey, grid%xp%jtsy:grid%xp%jtey, m))
 
-      call da_recursive_filter_vec_1d(rf_passes_over_two, rf_alpha(m), val_j, njy, niy)
+      call da_recursive_filter_1d(rf_passes_over_two, rf_alpha(m), val_j, njy, niy)
 
       grid%xp%v1y(grid%xp%itsy:grid%xp%itey, grid%xp%jtsy:grid%xp%jtey, m) = TRANSPOSE(val_j)
    end do
